@@ -1,0 +1,5 @@
+.env
+node_modules/
+data/user-stats.json
+data/vocabulary-cache.json
+npm-debug.log*
