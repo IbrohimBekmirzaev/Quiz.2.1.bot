@@ -159,7 +159,15 @@ async function processPollAnswer(bot, answer) {
     } catch (_) {}
   }
 
-  return sendCurrentQuestion(bot, chatId);
+  const result = await sendCurrentQuestion(bot, chatId);
+  if (result && result.correct !== undefined) {
+    return {
+      ...result,
+      chatId
+    };
+  }
+
+  return result;
 }
 
 async function finishQuiz(bot, chatId) {

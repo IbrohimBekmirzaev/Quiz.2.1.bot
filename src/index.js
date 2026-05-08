@@ -3,7 +3,7 @@ const TelegramBot = require('node-telegram-bot-api');
 const config = require('./config');
 const { handleMessage } = require('./handlers/messageHandler');
 const { handleCallback } = require('./handlers/callbackHandler');
-const { logError } = require('./services/loggerService');
+const { logError, logQuizFinished } = require('./services/loggerService');
 const { processPollAnswer } = require('./services/quizService');
 const { getLessonTests } = require('./services/vocabularyService');
 
@@ -112,7 +112,16 @@ bot.on('callback_query', async (query) => {
 
 bot.on('poll_answer', async (answer) => {
   try {
-    await processPollAnswer(bot, answer);
+    const result = await processPollAnswer(bot, answer);
+    if (result && result.correct !== undefined) {
+      await logQuizFinished(
+        bot,
+        { from: answer.user, chat: { id: result.chatId } },
+        result.testName,
+        result.correct,
+        result.wrong
+      );
+    }
   } catch (error) {
     await safeLogError(error, {
       place: 'poll_answer',
