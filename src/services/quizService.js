@@ -170,9 +170,6 @@ async function finishQuiz(bot, chatId) {
   const percent = total ? Math.round((session.correct / total) * 100) : 0;
   const text = [
     '📊 Test yakunlandi',
-    `👤 ${session.user?.firstName || 'Foydalanuvchi'}`,
-    `🔗 ${session.user?.username || 'Username yo\'q'}`,
-    ...(session.user?.id ? [`🆔 ${session.user.id}`] : []),
     `📚 ${session.testName}`,
     `✅ To'g'ri: ${session.correct}`,
     `❌ Xato: ${session.wrong}`,
