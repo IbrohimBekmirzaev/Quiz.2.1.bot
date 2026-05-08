@@ -2,7 +2,8 @@ const config = require('../config');
 const sessionStore = require('../storage/sessionStore');
 const { getVocabularyList, getLessonTests, groupIntoTests, pickQuestions } = require('./vocabularyService');
 const { buildMenuKeyboard } = require('./menuService');
-const { buildArabicPrompt, buildPollQuestion, gradeAnswer, getNextTestIndex } = require('../utils/quiz');
+const { buildPollQuestion, gradeAnswer, getNextTestIndex } = require('../utils/quiz');
+const { renderArabicWordImage } = require('../utils/arabicImage');
 
 async function getTests() {
   const all = await getVocabularyList();
@@ -93,9 +94,11 @@ async function sendCurrentQuestion(bot, chatId) {
   }
 
   const q = session.questions[session.current];
-  const promptText = buildArabicPrompt(q.arabic, session.current + 1, session.questions.length);
-  const prompt = await bot.sendMessage(chatId, promptText);
-  const sent = await bot.sendPoll(chatId, buildPollQuestion(), q.options, {
+  const promptImage = await renderArabicWordImage(q.arabic);
+  const prompt = await bot.sendPhoto(chatId, promptImage, {
+    caption: `(${session.current + 1}/${session.questions.length})`
+  });
+  const sent = await bot.sendPoll(chatId, buildPollQuestion(session.current + 1, session.questions.length), q.options, {
     type: 'quiz',
     is_anonymous: false,
     correct_option_id: q.correctIndex

@@ -3,11 +3,11 @@ const assert = require('node:assert/strict');
 
 const {
   formatOptionLabel,
-  buildArabicPrompt,
   buildPollQuestion,
   gradeAnswer,
   getNextTestIndex
 } = require('../src/utils/quiz');
+const { renderArabicWordImage } = require('../src/utils/arabicImage');
 const { pickQuestions } = require('../src/services/vocabularyService');
 
 test('formatOptionLabel shortens long answers', () => {
@@ -15,14 +15,14 @@ test('formatOptionLabel shortens long answers', () => {
   assert.ok(label.includes('\n') || label.endsWith('...'));
 });
 
-test('buildArabicPrompt returns arabic word and progress', () => {
-  const text = buildArabicPrompt('رَجُلٌ', 1, 10);
-  assert.ok(text.includes('رَجُلٌ'));
-  assert.ok(text.includes('1/10'));
+test('buildPollQuestion returns only progress', () => {
+  assert.equal(buildPollQuestion(1, 10), '(1/10)');
 });
 
-test('buildPollQuestion stays short', () => {
-  assert.equal(buildPollQuestion(), 'Javobni tanlang');
+test('renderArabicWordImage returns png buffer', async () => {
+  const image = await renderArabicWordImage('قَلَمٌ');
+  assert.ok(Buffer.isBuffer(image));
+  assert.ok(image.length > 1000);
 });
 
 test('gradeAnswer updates session counters', () => {

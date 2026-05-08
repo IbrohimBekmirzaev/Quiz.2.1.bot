@@ -25,16 +25,8 @@ function formatOptionLabel(value) {
   return shortenText(normalized);
 }
 
-function buildArabicPrompt(arabic, index, total) {
-  return [
-    arabic,
-    '',
-    `(${index}/${total})`
-  ].join('\n');
-}
-
-function buildPollQuestion() {
-  return 'Javobni tanlang';
+function buildPollQuestion(index, total) {
+  return `(${index}/${total})`;
 }
 
 function gradeAnswer(session, correctIndex, selectedIndex) {
@@ -56,7 +48,6 @@ function getNextTestIndex(currentIndex, totalTests) {
 module.exports = {
   OPTION_MAX_LENGTH,
   formatOptionLabel,
-  buildArabicPrompt,
   buildPollQuestion,
   gradeAnswer,
   getNextTestIndex
