@@ -27,10 +27,9 @@ function formatOptionLabel(value) {
 
 function buildPollQuestion(arabic, index, total) {
   return [
-    'Arabcha so\'z',
     arabic,
     '',
-    `Tarjimani tanlang • ${index}/${total}`
+    `(${index}/${total})`
   ].join('\n');
 }
 

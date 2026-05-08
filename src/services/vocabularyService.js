@@ -222,11 +222,14 @@ function pickQuestions(sourceItems, allItems, count) {
   const base = shuffle(sourceItems).slice(0, count);
   return base.map((item) => {
     const wrongPool = [...new Set(allItems.map((x) => x.uzbek).filter((value) => value && value !== item.uzbek))];
-    const options = shuffle([item.uzbek, ...shuffle(wrongPool).slice(0, 6)])
-      .slice(0, 4)
-      .map((value) => formatOptionLabel(value));
     const correctAnswer = formatOptionLabel(item.uzbek);
-    const uniqueOptions = [...new Set(options)];
+    const uniqueWrongOptions = [...new Set(
+      shuffle(wrongPool)
+        .map((value) => formatOptionLabel(value))
+        .filter((value) => value && value !== correctAnswer)
+    )];
+    const uniqueOptions = shuffle([correctAnswer, ...uniqueWrongOptions.slice(0, 3)]);
+
     while (uniqueOptions.length < 4) {
       uniqueOptions.push(`Variant ${uniqueOptions.length + 1}`);
     }
