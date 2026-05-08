@@ -144,9 +144,11 @@ async function logStart(bot, msg) {
 async function logQuizStarted(bot, msg, testName) {
   const text = [
     '📚 Quiz boshlandi',
-    `• ${testName}`,
-    `• ${msg.from?.first_name || 'Noma\'lum'} ${msg.from?.username ? `(@${msg.from.username})` : ''}`.trim(),
-    `• ${formatDate()}`
+    `👤 ${msg.from?.first_name || 'Noma\'lum'}`,
+    `🔗 ${msg.from?.username ? `@${msg.from.username}` : '@no_username'}`,
+    `🆔 ${msg.from?.id || 'Noma\'lum'}`,
+    `📚 ${testName}`,
+    `🕒 ${formatDate()}`
   ].join('\n');
   return sendTopicText(bot, 'quiz', text);
 }
@@ -156,11 +158,13 @@ async function logQuizFinished(bot, msg, testName, correct, wrong) {
   const percent = total ? Math.round((correct / total) * 100) : 0;
   const text = [
     '📊 Test yakunlandi',
-    `• ${msg.from?.first_name || 'Noma\'lum'} ${msg.from?.username ? `(@${msg.from.username})` : ''}`.trim(),
-    `• ${testName}`,
+    `👤 ${msg.from?.first_name || 'Noma\'lum'}`,
+    `🔗 ${msg.from?.username ? `@${msg.from.username}` : '@no_username'}`,
+    `🆔 ${msg.from?.id || 'Noma\'lum'}`,
     `✅ To'g'ri: ${correct}`,
     `❌ Xato: ${wrong}`,
     `📈 Foiz: ${percent}%`,
+    `📚 ${testName}`,
     `🕒 ${formatDate()}`
   ].join('\n');
   return sendTopicText(bot, 'quiz', text);
