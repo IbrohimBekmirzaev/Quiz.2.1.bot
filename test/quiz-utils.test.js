@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 
 const {
   formatOptionLabel,
+  buildArabicPrompt,
   buildPollQuestion,
   gradeAnswer,
   getNextTestIndex
@@ -14,10 +15,14 @@ test('formatOptionLabel shortens long answers', () => {
   assert.ok(label.includes('\n') || label.endsWith('...'));
 });
 
-test('buildPollQuestion returns helper text', () => {
-  const text = buildPollQuestion('رَجُلٌ', 1, 10);
+test('buildArabicPrompt returns arabic word and progress', () => {
+  const text = buildArabicPrompt('رَجُلٌ', 1, 10);
   assert.ok(text.includes('رَجُلٌ'));
   assert.ok(text.includes('1/10'));
+});
+
+test('buildPollQuestion stays short', () => {
+  assert.equal(buildPollQuestion(), 'Javobni tanlang');
 });
 
 test('gradeAnswer updates session counters', () => {
