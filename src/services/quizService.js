@@ -11,12 +11,24 @@ async function getTests() {
 
 async function removePreviousQuestion(bot, chatId, currentMessageId) {
   const existingSession = sessionStore.get(chatId);
-  if (!existingSession?.questionMessageId) return;
-  if (existingSession.questionMessageId === currentMessageId) return;
+  if (!existingSession) return;
 
-  try {
-    await bot.deleteMessage(chatId, existingSession.questionMessageId);
-  } catch (_) {}
+  const messageIds = new Set([
+    ...(existingSession.pollMessageIds || []),
+    existingSession.questionMessageId,
+    existingSession.resultMessageId
+  ].filter(Boolean));
+
+  for (const messageId of messageIds) {
+    if (messageId === currentMessageId) continue;
+    try {
+      await bot.deleteMessage(chatId, messageId);
+    } catch (_) {}
+  }
+
+  if (existingSession.currentPollId) {
+    sessionStore.unlinkPoll(existingSession.currentPollId);
+  }
 }
 
 async function showMenu(bot, chatId, page = 1, editMessage) {
@@ -54,6 +66,9 @@ async function startQuiz(bot, msg, testIndex) {
     correct: 0,
     wrong: 0,
     questionMessageId: null,
+    currentPollId: null,
+    pollMessageIds: [],
+    resultMessageId: null,
     menuMessageId: msg.message_id
   };
   sessionStore.set(msg.chat.id, session);
@@ -71,24 +86,20 @@ async function sendCurrentQuestion(bot, chatId) {
 
   const q = session.questions[session.current];
   const text = `${q.arabic} (${session.current + 1}/${session.questions.length})`;
-  const reply_markup = {
-    inline_keyboard: q.options.map((option, index) => ([{
-      text: option,
-      callback_data: `ANSWER_${session.current}_${index}`
-    }]))
-  };
+  const sent = await bot.sendPoll(chatId, text, q.options, {
+    type: 'quiz',
+    is_anonymous: false,
+    correct_option_id: q.correctIndex
+  });
 
-  if (session.questionMessageId) {
-    await bot.editMessageText(text, {
-      chat_id: chatId,
-      message_id: session.questionMessageId,
-      reply_markup
-    });
-    return session.questionMessageId;
+  if (session.currentPollId) {
+    sessionStore.unlinkPoll(session.currentPollId);
   }
 
-  const sent = await bot.sendMessage(chatId, text, { reply_markup });
+  session.currentPollId = sent.poll.id;
   session.questionMessageId = sent.message_id;
+  session.pollMessageIds = [...(session.pollMessageIds || []), sent.message_id];
+  sessionStore.linkPoll(sent.poll.id, chatId);
   sessionStore.set(chatId, session);
   return sent.message_id;
 }
@@ -107,6 +118,35 @@ async function processAnswer(bot, msg, questionIndex, selectedIndex) {
   session.current += 1;
   sessionStore.set(msg.chat.id, session);
   return sendCurrentQuestion(bot, msg.chat.id);
+}
+
+async function processPollAnswer(bot, answer) {
+  const selectedIndex = answer?.option_ids?.[0];
+  if (selectedIndex === undefined) return null;
+
+  const chatId = sessionStore.getChatIdByPoll(answer.poll_id);
+  if (!chatId) return null;
+
+  const session = sessionStore.get(chatId);
+  if (!session || session.currentPollId !== answer.poll_id) {
+    sessionStore.unlinkPoll(answer.poll_id);
+    return null;
+  }
+
+  const q = session.questions[session.current];
+  if (!q) {
+    sessionStore.unlinkPoll(answer.poll_id);
+    return null;
+  }
+
+  if (selectedIndex === q.correctIndex) session.correct += 1;
+  else session.wrong += 1;
+
+  session.current += 1;
+  sessionStore.unlinkPoll(answer.poll_id);
+  session.currentPollId = null;
+  sessionStore.set(chatId, session);
+  return sendCurrentQuestion(bot, chatId);
 }
 
 async function finishQuiz(bot, chatId) {
@@ -132,14 +172,13 @@ async function finishQuiz(bot, chatId) {
   };
 
   if (session.questionMessageId) {
-    await bot.editMessageText(text, {
-      chat_id: chatId,
-      message_id: session.questionMessageId,
-      reply_markup
-    });
+    const sent = await bot.sendMessage(chatId, text, { reply_markup });
+    session.resultMessageId = sent.message_id;
+    sessionStore.set(chatId, session);
   } else {
     const sent = await bot.sendMessage(chatId, text, { reply_markup });
-    session.questionMessageId = sent.message_id;
+    session.resultMessageId = sent.message_id;
+    sessionStore.set(chatId, session);
   }
 
   return {
@@ -150,6 +189,10 @@ async function finishQuiz(bot, chatId) {
 }
 
 function clearSession(chatId) {
+  const session = sessionStore.get(chatId);
+  if (session?.currentPollId) {
+    sessionStore.unlinkPoll(session.currentPollId);
+  }
   sessionStore.remove(chatId);
 }
 
@@ -157,6 +200,7 @@ module.exports = {
   showMenu,
   startQuiz,
   processAnswer,
+  processPollAnswer,
   clearSession,
   finishQuiz
 };

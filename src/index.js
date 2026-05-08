@@ -4,6 +4,7 @@ const config = require('./config');
 const { handleMessage } = require('./handlers/messageHandler');
 const { handleCallback } = require('./handlers/callbackHandler');
 const { logError } = require('./services/loggerService');
+const { processPollAnswer } = require('./services/quizService');
 
 const bot = new TelegramBot(config.botToken, { polling: true });
 let pollingRestartTimer = null;
@@ -97,6 +98,18 @@ bot.on('message', async (msg) => {
 
 bot.on('callback_query', async (query) => {
   await handleCallback(bot, query);
+});
+
+bot.on('poll_answer', async (answer) => {
+  try {
+    await processPollAnswer(bot, answer);
+  } catch (error) {
+    await safeLogError(error, {
+      place: 'poll_answer',
+      userId: answer?.user?.id,
+      pollId: answer?.poll_id
+    });
+  }
 });
 
 bot.on('polling_error', async (error) => {
