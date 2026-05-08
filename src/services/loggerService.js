@@ -1,7 +1,7 @@
 const config = require('../config');
 const { formatDate } = require('../utils/time');
 const { buildUserBlock } = require('../utils/user');
-const { registerUserStart } = require('../storage/userStatsStore');
+const { registerUserIfNew } = require('../storage/userStatsStore');
 
 async function sendTopicText(bot, topicId, text, extra = {}) {
   const deliveries = config.logTargets.map((target) => {
@@ -83,50 +83,29 @@ async function sendSupportPayload(bot, target, msg, header) {
 }
 
 async function logStart(bot, msg) {
+  const registration = registerUserIfNew(msg);
+  if (!registration.isNewUser) {
+    return null;
+  }
+
+  const { stats } = registration;
   const text = [
     `🟢 ${config.botName}`,
     '',
-    '📌 Hodisa: START',
-    buildUserBlock(msg.from, msg.chat.id),
+    '📌 Yangi foydalanuvchi',
     `🕒 ${formatDate()}`,
     '',
-    '✅ Foydalanuvchi botni ishga tushirdi'
-  ].join('\n');
-  return sendTopicText(bot, 'start', text);
-}
-
-async function logUserStats(bot, msg) {
-  const stats = registerUserStart(msg);
-  const sameUser = stats.lastAddedUser.id && stats.lastAddedUser.id === stats.lastActiveUser.id;
-  const text = [
-    `👥 ${config.botName}`,
-    '',
-    '📌 Foydalanuvchi statistikasi',
-    `🕒 Yangilandi: ${formatDate()}`,
-    '',
-    `• Jami foydalanuvchilar: ${stats.totalUsers}`,
-    `• Jami kirishlar: ${stats.totalStarts}`,
-    '',
-    '📅 Davrlar bo\'yicha',
-    `• Bugun: ${stats.periods.day.uniqueUsers} foydalanuvchi, ${stats.periods.day.startCount} kirish`,
-    `• Hafta: ${stats.periods.week.uniqueUsers} foydalanuvchi, ${stats.periods.week.startCount} kirish`,
-    `• Oy: ${stats.periods.month.uniqueUsers} foydalanuvchi, ${stats.periods.month.startCount} kirish`,
-    `• Yil: ${stats.periods.year.uniqueUsers} foydalanuvchi, ${stats.periods.year.startCount} kirish`,
-    '',
-    sameUser ? '🆕 Oxirgi foydalanuvchi' : '🆕 Oxirgi qo\'shilgan foydalanuvchi',
     `• Ism: ${stats.lastAddedUser.name}`,
     `• Username: ${stats.lastAddedUser.username}`,
+    `• User ID: ${stats.lastAddedUser.id || 'Noma\'lum'}`,
+    `• Chat ID: ${stats.lastAddedUser.chatId || 'Noma\'lum'}`,
     `• Sana: ${stats.lastAddedUser.firstSeenAt ? formatDate(new Date(stats.lastAddedUser.firstSeenAt)) : 'Noma\'lum'}`,
-    `• Oxirgi kirish: ${stats.lastAddedUser.lastSeenAt ? formatDate(new Date(stats.lastAddedUser.lastSeenAt)) : 'Noma\'lum'}`,
-    sameUser ? `• Jami kirishi: ${stats.lastAddedUser.startCount}` : `• Jami kirishi: ${stats.lastAddedUser.startCount}`,
-    ...(sameUser ? [] : [
-      '',
-      '🙋 Oxirgi faol foydalanuvchi',
-      `• Ism: ${stats.lastActiveUser.name}`,
-      `• Username: ${stats.lastActiveUser.username}`,
-      `• Oxirgi kirish: ${stats.lastActiveUser.lastSeenAt ? formatDate(new Date(stats.lastActiveUser.lastSeenAt)) : 'Noma\'lum'}`,
-      `• Jami kirishi: ${stats.lastActiveUser.startCount}`
-    ])
+    '',
+    `• Jami foydalanuvchilar: ${stats.totalUsers}`,
+    `• Bugun qo'shilganlar: ${stats.periods.day}`,
+    `• Hafta qo'shilganlar: ${stats.periods.week}`,
+    `• Oy qo'shilganlar: ${stats.periods.month}`,
+    `• Yil qo'shilganlar: ${stats.periods.year}`
   ].join('\n');
 
   return sendTopicText(bot, 'users', text);
@@ -223,7 +202,6 @@ async function forwardUserSupport(bot, msg) {
 
 module.exports = {
   logStart,
-  logUserStats,
   logQuizStarted,
   logQuizFinished,
   logLink,

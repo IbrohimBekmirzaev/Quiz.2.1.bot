@@ -1,6 +1,6 @@
 const config = require('../config');
 const { showMenu, clearSession } = require('../services/quizService');
-const { logStart, logUserStats, forwardUserSupport, logError } = require('../services/loggerService');
+const { logStart, forwardUserSupport, logError } = require('../services/loggerService');
 const { handleAdminReply } = require('./adminReplyHandler');
 
 async function handleMessage(bot, msg) {
@@ -15,7 +15,6 @@ async function handleMessage(bot, msg) {
     if (text === '/start') {
       clearSession(msg.chat.id);
       await logStart(bot, msg);
-      await logUserStats(bot, msg);
       await showMenu(bot, msg.chat.id, 1);
       return;
     }
