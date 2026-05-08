@@ -3,6 +3,6 @@
   "deploy": {
     "startCommand": "npm start",
     "healthcheckPath": "/health",
-    "restartPolicyType": "ALWAYS"
+    "restartPolicyType": "ON_FAILURE"
   }
 }
