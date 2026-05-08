@@ -1,5 +1,6 @@
 .env
 node_modules/
 data/user-stats.json
+data/mini-app-store.json
 data/vocabulary-cache.json
 npm-debug.log*

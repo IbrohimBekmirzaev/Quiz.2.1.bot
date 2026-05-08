@@ -86,6 +86,8 @@ if (secondLogGroupId) {
 }
 
 const adminGroupIds = logTargets.map((target) => String(target.groupId));
+const defaultMiniAppUrl = process.env.MINI_APP_URL
+  || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}/mini-app` : 'https://t.me/');
 
 module.exports = {
   botName: process.env.BOT_NAME || 'Qalb Ul Arabiyya Quiz boti',
@@ -100,7 +102,7 @@ module.exports = {
   secondLogGroupId,
   adminGroupIds,
   logTargets,
-  miniAppUrl: validateHttpUrl('MINI_APP_URL', process.env.MINI_APP_URL || 'https://t.me/'),
+  miniAppUrl: validateHttpUrl('MINI_APP_URL', defaultMiniAppUrl),
   apiUrl: validateHttpUrl('API_URL', process.env.API_URL || 'https://bs.asmoarabic.com/api/getAllLessonVocabularies'),
   booksApiUrl: validateHttpUrl('BOOKS_API_URL', process.env.BOOKS_API_URL || 'https://bs.asmoarabic.com/api/getbooks'),
   questionsPerTest: toNumber('QUESTIONS_PER_TEST', 10),

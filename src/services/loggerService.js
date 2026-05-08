@@ -6,6 +6,10 @@ const { registerUserIfNew } = require('../storage/userStatsStore');
 const targetFailureNoticeAt = new Map();
 const FAILURE_NOTICE_COOLDOWN_MS = 1000 * 60 * 10;
 
+function getSourceLabel(source = 'telegram_bot') {
+  return source === 'mini_app' ? 'Mini App' : 'Telegram Bot';
+}
+
 function getShortStack(error) {
   const stack = String(error?.stack || '').trim();
   if (!stack) return '';
@@ -141,19 +145,20 @@ async function logStart(bot, msg) {
   return sendTopicText(bot, 'users', text);
 }
 
-async function logQuizStarted(bot, msg, testName) {
+async function logQuizStarted(bot, msg, testName, source = 'telegram_bot') {
   const text = [
     '📚 Quiz boshlandi',
     `👤 ${msg.from?.first_name || 'Noma\'lum'}`,
     `🔗 ${msg.from?.username ? `@${msg.from.username}` : '@no_username'}`,
     `🆔 ${msg.from?.id || 'Noma\'lum'}`,
     `📚 ${testName}`,
+    `📱 ${getSourceLabel(source)}`,
     `🕒 ${formatDate()}`
   ].join('\n');
   return sendTopicText(bot, 'quiz', text);
 }
 
-async function logQuizFinished(bot, msg, testName, correct, wrong) {
+async function logQuizFinished(bot, msg, testName, correct, wrong, source = 'telegram_bot') {
   const total = correct + wrong;
   const percent = total ? Math.round((correct / total) * 100) : 0;
   const text = [
@@ -165,12 +170,13 @@ async function logQuizFinished(bot, msg, testName, correct, wrong) {
     `❌ Xato: ${wrong}`,
     `📈 Foiz: ${percent}%`,
     `📚 ${testName}`,
+    `📱 ${getSourceLabel(source)}`,
     `🕒 ${formatDate()}`
   ].join('\n');
   return sendTopicText(bot, 'quiz', text);
 }
 
-async function logLink(bot, msg, label, url) {
+async function logLink(bot, msg, label, url, source = 'telegram_bot') {
   const text = [
     `🌐 ${config.botName}`,
     '',
@@ -178,6 +184,7 @@ async function logLink(bot, msg, label, url) {
     buildUserBlock(msg.from, msg.chat.id),
     `🔗 ${label}`,
     `🌍 ${url}`,
+    `📱 ${getSourceLabel(source)}`,
     `🕒 ${formatDate()}`
   ].join('\n');
   return sendTopicText(bot, 'link', text);
