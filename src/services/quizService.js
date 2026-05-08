@@ -3,7 +3,6 @@ const sessionStore = require('../storage/sessionStore');
 const { getVocabularyList, getLessonTests, groupIntoTests, pickQuestions } = require('./vocabularyService');
 const { buildMenuKeyboard } = require('./menuService');
 const { buildPollQuestion, gradeAnswer, getNextTestIndex } = require('../utils/quiz');
-const { renderArabicWordImage } = require('../utils/arabicImage');
 
 async function getTests() {
   const all = await getVocabularyList();
@@ -21,7 +20,6 @@ async function removePreviousQuestion(bot, chatId, currentMessageId) {
   if (!existingSession) return;
 
   const messageIds = new Set([
-    existingSession.promptMessageId,
     ...(existingSession.pollMessageIds || []),
     existingSession.questionMessageId,
     existingSession.resultMessageId
@@ -78,7 +76,6 @@ async function startQuiz(bot, msg, testIndex) {
     current: 0,
     correct: 0,
     wrong: 0,
-    promptMessageId: null,
     questionMessageId: null,
     currentPollId: null,
     pollMessageIds: [],
@@ -99,11 +96,7 @@ async function sendCurrentQuestion(bot, chatId) {
   }
 
   const q = session.questions[session.current];
-  const promptImage = await renderArabicWordImage(q.arabic);
-  const prompt = await bot.sendPhoto(chatId, promptImage, {
-    caption: `(${session.current + 1}/${session.questions.length})`
-  });
-  const sent = await bot.sendPoll(chatId, buildPollQuestion(session.current + 1, session.questions.length), q.options, {
+  const sent = await bot.sendPoll(chatId, buildPollQuestion(q.arabic, session.current + 1, session.questions.length), q.options, {
     type: 'quiz',
     is_anonymous: false,
     correct_option_id: q.correctIndex
@@ -114,7 +107,6 @@ async function sendCurrentQuestion(bot, chatId) {
   }
 
   session.currentPollId = sent.poll.id;
-  session.promptMessageId = prompt.message_id;
   session.questionMessageId = sent.message_id;
   session.pollMessageIds = [...(session.pollMessageIds || []), sent.message_id];
   sessionStore.linkPoll(sent.poll.id, chatId);
@@ -155,19 +147,11 @@ async function processPollAnswer(bot, answer) {
   }
 
   gradeAnswer(session, q.correctIndex, selectedIndex);
-  const answeredPromptMessageId = session.promptMessageId;
   const answeredPollMessageId = session.questionMessageId;
   sessionStore.unlinkPoll(answer.poll_id);
-  session.promptMessageId = null;
   session.currentPollId = null;
   session.questionMessageId = null;
   sessionStore.set(chatId, session);
-
-  if (answeredPromptMessageId) {
-    try {
-      await bot.deleteMessage(chatId, answeredPromptMessageId);
-    } catch (_) {}
-  }
 
   if (answeredPollMessageId) {
     try {
@@ -208,13 +192,11 @@ async function finishQuiz(bot, chatId) {
 
   if (session.questionMessageId) {
     const sent = await bot.sendMessage(chatId, text, { reply_markup });
-    session.promptMessageId = null;
     session.questionMessageId = null;
     session.resultMessageId = sent.message_id;
     sessionStore.set(chatId, session);
   } else {
     const sent = await bot.sendMessage(chatId, text, { reply_markup });
-    session.promptMessageId = null;
     session.questionMessageId = null;
     session.resultMessageId = sent.message_id;
     sessionStore.set(chatId, session);

@@ -7,7 +7,6 @@ const {
   gradeAnswer,
   getNextTestIndex
 } = require('../src/utils/quiz');
-const { renderArabicWordImage } = require('../src/utils/arabicImage');
 const { pickQuestions } = require('../src/services/vocabularyService');
 
 test('formatOptionLabel shortens long answers', () => {
@@ -15,14 +14,10 @@ test('formatOptionLabel shortens long answers', () => {
   assert.ok(label.includes('\n') || label.endsWith('...'));
 });
 
-test('buildPollQuestion returns only progress', () => {
-  assert.equal(buildPollQuestion(1, 10), '(1/10)');
-});
-
-test('renderArabicWordImage returns png buffer', async () => {
-  const image = await renderArabicWordImage('قَلَمٌ');
-  assert.ok(Buffer.isBuffer(image));
-  assert.ok(image.length > 1000);
+test('buildPollQuestion returns arabic word with progress', () => {
+  const text = buildPollQuestion('قَلَمٌ', 1, 10);
+  assert.ok(text.includes('قَلَمٌ'));
+  assert.ok(text.includes('(1/10)'));
 });
 
 test('gradeAnswer updates session counters', () => {

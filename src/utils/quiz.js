@@ -1,4 +1,5 @@
 const OPTION_MAX_LENGTH = 26;
+const RTL_MARK = '\u200F';
 
 function shortenText(text, maxLength = OPTION_MAX_LENGTH) {
   if (text.length <= maxLength) return text;
@@ -25,8 +26,8 @@ function formatOptionLabel(value) {
   return shortenText(normalized);
 }
 
-function buildPollQuestion(index, total) {
-  return `(${index}/${total})`;
+function buildPollQuestion(arabic, index, total) {
+  return `${RTL_MARK}${arabic} (${index}/${total})`;
 }
 
 function gradeAnswer(session, correctIndex, selectedIndex) {
