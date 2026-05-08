@@ -2,11 +2,17 @@ const config = require('../config');
 const sessionStore = require('../storage/sessionStore');
 const { getVocabularyList, getLessonTests, groupIntoTests, pickQuestions } = require('./vocabularyService');
 const { buildMenuKeyboard } = require('./menuService');
+const { buildPollQuestion, gradeAnswer, getNextTestIndex } = require('../utils/quiz');
 
 async function getTests() {
   const all = await getVocabularyList();
   const lessonTests = await getLessonTests();
   return lessonTests.length ? lessonTests : groupIntoTests(all, config.questionsPerTest);
+}
+
+async function getTotalTestsCount() {
+  const tests = await getTests();
+  return tests.length;
 }
 
 async function removePreviousQuestion(bot, chatId, currentMessageId) {
@@ -85,7 +91,7 @@ async function sendCurrentQuestion(bot, chatId) {
   }
 
   const q = session.questions[session.current];
-  const text = `${q.arabic} (${session.current + 1}/${session.questions.length})`;
+  const text = buildPollQuestion(q.arabic, session.current + 1, session.questions.length);
   const sent = await bot.sendPoll(chatId, text, q.options, {
     type: 'quiz',
     is_anonymous: false,
@@ -112,10 +118,7 @@ async function processAnswer(bot, msg, questionIndex, selectedIndex) {
   const q = session.questions[questionIndex];
   if (!q) return null;
 
-  if (selectedIndex === q.correctIndex) session.correct += 1;
-  else session.wrong += 1;
-
-  session.current += 1;
+  gradeAnswer(session, q.correctIndex, selectedIndex);
   sessionStore.set(msg.chat.id, session);
   return sendCurrentQuestion(bot, msg.chat.id);
 }
@@ -139,13 +142,19 @@ async function processPollAnswer(bot, answer) {
     return null;
   }
 
-  if (selectedIndex === q.correctIndex) session.correct += 1;
-  else session.wrong += 1;
-
-  session.current += 1;
+  gradeAnswer(session, q.correctIndex, selectedIndex);
+  const answeredPollMessageId = session.questionMessageId;
   sessionStore.unlinkPoll(answer.poll_id);
   session.currentPollId = null;
+  session.questionMessageId = null;
   sessionStore.set(chatId, session);
+
+  if (answeredPollMessageId) {
+    try {
+      await bot.deleteMessage(chatId, answeredPollMessageId);
+    } catch (_) {}
+  }
+
   return sendCurrentQuestion(bot, chatId);
 }
 
@@ -157,18 +166,21 @@ async function finishQuiz(bot, chatId) {
   const percent = total ? Math.round((session.correct / total) * 100) : 0;
   const text = [
     '📊 Test yakunlandi',
+    `📚 ${session.testName}`,
     `✅ To'g'ri: ${session.correct}`,
     `❌ Xato: ${session.wrong}`,
     `📈 Foiz: ${percent}%`
   ].join('\n');
 
+  const nextTestIndex = getNextTestIndex(session.testIndex, await getTotalTestsCount());
+  const actionRow = [{ text: 'Qayta ♻️', callback_data: `TEST_${session.testIndex}` }];
+  if (nextTestIndex) {
+    actionRow.push({ text: 'Keyingi ▶️', callback_data: `TEST_${nextTestIndex}` });
+  }
+  actionRow.push({ text: 'Menyu 📚', callback_data: 'BACK_TO_MENU' });
+
   const reply_markup = {
-    inline_keyboard: [
-      [
-        { text: 'Qayta ♻️', callback_data: `TEST_${session.testIndex}` },
-        { text: 'Start 🟢', callback_data: 'BACK_TO_MENU' }
-      ]
-    ]
+    inline_keyboard: [actionRow]
   };
 
   if (session.questionMessageId) {
@@ -199,6 +211,7 @@ function clearSession(chatId) {
 module.exports = {
   showMenu,
   startQuiz,
+  getTests,
   processAnswer,
   processPollAnswer,
   clearSession,

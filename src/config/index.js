@@ -1,5 +1,24 @@
 require('dotenv').config();
 
+function validateBotToken(value) {
+  if (!/^\d+:[A-Za-z0-9_-]{20,}$/.test(value)) {
+    throw new Error('BOT_TOKEN noto\'g\'ri formatda.');
+  }
+  return value;
+}
+
+function validateHttpUrl(name, value) {
+  try {
+    const url = new URL(value);
+    if (!['http:', 'https:'].includes(url.protocol)) {
+      throw new Error(`${name} http yoki https bo'lishi kerak.`);
+    }
+    return value;
+  } catch (_) {
+    throw new Error(`${name} noto'g'ri URL formatda.`);
+  }
+}
+
 function required(name) {
   const value = process.env[name];
   if (!value) {
@@ -70,7 +89,7 @@ const adminGroupIds = logTargets.map((target) => String(target.groupId));
 
 module.exports = {
   botName: process.env.BOT_NAME || 'Qalb Ul Arabiyya Quiz boti',
-  botToken: required('BOT_TOKEN'),
+  botToken: validateBotToken(required('BOT_TOKEN')),
   adminGroupId,
   topicStartId: primaryTopics.start,
   topicQuizId: primaryTopics.quiz,
@@ -81,9 +100,9 @@ module.exports = {
   secondLogGroupId,
   adminGroupIds,
   logTargets,
-  miniAppUrl: process.env.MINI_APP_URL || 'https://t.me/',
-  apiUrl: process.env.API_URL || 'https://bs.asmoarabic.com/api/getAllLessonVocabularies',
-  booksApiUrl: process.env.BOOKS_API_URL || 'https://bs.asmoarabic.com/api/getbooks',
+  miniAppUrl: validateHttpUrl('MINI_APP_URL', process.env.MINI_APP_URL || 'https://t.me/'),
+  apiUrl: validateHttpUrl('API_URL', process.env.API_URL || 'https://bs.asmoarabic.com/api/getAllLessonVocabularies'),
+  booksApiUrl: validateHttpUrl('BOOKS_API_URL', process.env.BOOKS_API_URL || 'https://bs.asmoarabic.com/api/getbooks'),
   questionsPerTest: toNumber('QUESTIONS_PER_TEST', 10),
   testsPerPage: toNumber('TESTS_PER_PAGE', 6)
 };

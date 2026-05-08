@@ -1,16 +1,24 @@
 const config = require('../config');
 const { showMenu, clearSession } = require('../services/quizService');
 const { logStart, forwardUserSupport, logError } = require('../services/loggerService');
+const { buildAdminStatsText } = require('../services/adminService');
 const { handleAdminReply } = require('./adminReplyHandler');
 
 async function handleMessage(bot, msg) {
   try {
+    const text = (msg.text || '').trim();
+
     if (config.adminGroupIds.includes(String(msg.chat.id))) {
+      if (text === '/adminstats') {
+        await bot.sendMessage(msg.chat.id, await buildAdminStatsText(), {
+          message_thread_id: msg.message_thread_id
+        });
+        return;
+      }
+
       await handleAdminReply(bot, msg);
       return;
     }
-
-    const text = (msg.text || '').trim();
 
     if (text === '/start') {
       clearSession(msg.chat.id);
@@ -26,12 +34,24 @@ async function handleMessage(bot, msg) {
     }
 
     if (text === '/help') {
-      await bot.sendMessage(msg.chat.id, 'Yordam uchun xabar yozishingiz mumkin. Xabaringiz adminga yuboriladi.');
+      await bot.sendMessage(msg.chat.id, [
+        'ℹ️ Yordam',
+        '',
+        '• /start - botni ochadi',
+        '• /menu - testlar menyusini qayta ochadi',
+        '• Testni tanlang, arabcha so\'zni o\'qing va tarjimani belgilang',
+        '• Savolga javob topolmasangiz, oddiy xabar yozing. U adminga yuboriladi'
+      ].join('\n'), {
+        reply_markup: {
+          inline_keyboard: [[{ text: 'Menyu 📚', callback_data: 'BACK_TO_MENU' }]]
+        }
+      });
       return;
     }
 
     if (text === '/random') {
-      await bot.sendMessage(msg.chat.id, 'Darajalar endi darslar bo\'yicha tartiblangan. /menu ni bosing.');
+      clearSession(msg.chat.id);
+      await showMenu(bot, msg.chat.id, 1);
       return;
     }
 

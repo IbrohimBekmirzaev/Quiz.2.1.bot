@@ -3,6 +3,37 @@ const { formatDate } = require('../utils/time');
 const { buildUserBlock } = require('../utils/user');
 const { registerUserIfNew } = require('../storage/userStatsStore');
 
+const targetFailureNoticeAt = new Map();
+const FAILURE_NOTICE_COOLDOWN_MS = 1000 * 60 * 10;
+
+function getShortStack(error) {
+  const stack = String(error?.stack || '').trim();
+  if (!stack) return '';
+  return stack.split('\n').slice(0, 4).join('\n');
+}
+
+async function notifySecondaryTargetFailure(bot, target, reason, topicKey = 'error') {
+  const primaryTarget = config.logTargets[0];
+  if (!primaryTarget || String(primaryTarget.groupId) === String(target.groupId)) return;
+
+  const noticeKey = `${target.groupId}:${topicKey}`;
+  const lastSentAt = targetFailureNoticeAt.get(noticeKey) || 0;
+  if (Date.now() - lastSentAt < FAILURE_NOTICE_COOLDOWN_MS) return;
+  targetFailureNoticeAt.set(noticeKey, Date.now());
+
+  try {
+    await bot.sendMessage(primaryTarget.groupId, [
+      '⚠️ Ikkinchi log guruhi ishlamadi',
+      `• Group ID: ${target.groupId}`,
+      `• Topic: ${topicKey}`,
+      `• Xato: ${reason?.message || String(reason)}`,
+      `• Vaqt: ${formatDate()}`
+    ].join('\n'), {
+      message_thread_id: primaryTarget.topics.error
+    });
+  } catch (_) {}
+}
+
 async function sendTopicText(bot, topicId, text, extra = {}) {
   const deliveries = config.logTargets.map((target) => {
     const options = {
@@ -20,11 +51,12 @@ async function sendTopicText(bot, topicId, text, extra = {}) {
   const results = await Promise.allSettled(deliveries);
   const fulfilled = results.filter((result) => result.status === 'fulfilled');
 
-  results.forEach((result, index) => {
+  for (const [index, result] of results.entries()) {
     if (result.status === 'rejected') {
       console.error(`Log yuborilmadi. Group: ${config.logTargets[index].groupId}. Xato: ${result.reason.message}`);
+      await notifySecondaryTargetFailure(bot, config.logTargets[index], result.reason, topicId);
     }
-  });
+  }
 
   if (!fulfilled.length) {
     const firstRejected = results.find((result) => result.status === 'rejected');
@@ -103,9 +135,7 @@ async function logStart(bot, msg) {
     '',
     `• Jami foydalanuvchilar: ${stats.totalUsers}`,
     `• Bugun qo'shilganlar: ${stats.periods.day}`,
-    `• Hafta qo'shilganlar: ${stats.periods.week}`,
-    `• Oy qo'shilganlar: ${stats.periods.month}`,
-    `• Yil qo'shilganlar: ${stats.periods.year}`
+    `• Hafta qo'shilganlar: ${stats.periods.week}`
   ].join('\n');
 
   return sendTopicText(bot, 'users', text);
@@ -113,12 +143,10 @@ async function logStart(bot, msg) {
 
 async function logQuizStarted(bot, msg, testName) {
   const text = [
-    `📚 ${config.botName}`,
-    '',
-    '📌 Hodisa: QUIZ BOSHLANDI',
-    buildUserBlock(msg.from, msg.chat.id),
-    `📚 ${testName}`,
-    `🕒 ${formatDate()}`
+    '📚 Quiz boshlandi',
+    `• ${testName}`,
+    `• ${msg.from?.first_name || 'Noma\'lum'} ${msg.from?.username ? `(@${msg.from.username})` : ''}`.trim(),
+    `• ${formatDate()}`
   ].join('\n');
   return sendTopicText(bot, 'quiz', text);
 }
@@ -128,18 +156,12 @@ async function logQuizFinished(bot, msg, testName, correct, wrong) {
   const percent = total ? Math.round((correct / total) * 100) : 0;
   const text = [
     '📊 Test yakunlandi',
-    '',
-    `👤 ${msg.from?.first_name || 'Noma\'lum'}`,
-    `🔗 ${msg.from?.username ? '@' + msg.from.username : 'Username yo\'q'}`,
-    `🆔 ${msg.from?.id || ''}`,
-    `UID: ${msg.from?.id || ''}`,
-    '📱 Manba: Telegram Bot',
-    '',
+    `• ${msg.from?.first_name || 'Noma\'lum'} ${msg.from?.username ? `(@${msg.from.username})` : ''}`.trim(),
+    `• ${testName}`,
     `✅ To'g'ri: ${correct}`,
     `❌ Xato: ${wrong}`,
     `📈 Foiz: ${percent}%`,
-    '',
-    `📚 ${testName}`
+    `🕒 ${formatDate()}`
   ].join('\n');
   return sendTopicText(bot, 'quiz', text);
 }
@@ -158,6 +180,7 @@ async function logLink(bot, msg, label, url) {
 }
 
 async function logError(bot, error, extra = {}) {
+  const shortStack = getShortStack(error);
   const text = [
     '🚨 Error',
     '',
@@ -166,7 +189,8 @@ async function logError(bot, error, extra = {}) {
     `📍 Joy: ${extra.place || 'Noma\'lum'}`,
     `👤 User ID: ${extra.userId || 'Noma\'lum'}`,
     `💬 Chat ID: ${extra.chatId || 'Noma\'lum'}`,
-    `🕒 ${formatDate()}`
+    `🕒 ${formatDate()}`,
+    ...(shortStack ? ['', shortStack] : [])
   ].join('\n');
 
   try {
@@ -188,11 +212,12 @@ async function forwardUserSupport(bot, msg) {
   const results = await Promise.allSettled(deliveries);
   const fulfilled = results.filter((result) => result.status === 'fulfilled');
 
-  results.forEach((result, index) => {
+  for (const [index, result] of results.entries()) {
     if (result.status === 'rejected') {
       console.error(`Support log yuborilmadi. Group: ${config.logTargets[index].groupId}. Xato: ${result.reason.message}`);
+      await notifySecondaryTargetFailure(bot, config.logTargets[index], result.reason, 'support');
     }
-  });
+  }
 
   if (!fulfilled.length) {
     const firstRejected = results.find((result) => result.status === 'rejected');

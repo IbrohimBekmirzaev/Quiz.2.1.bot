@@ -5,6 +5,7 @@ const { handleMessage } = require('./handlers/messageHandler');
 const { handleCallback } = require('./handlers/callbackHandler');
 const { logError } = require('./services/loggerService');
 const { processPollAnswer } = require('./services/quizService');
+const { getLessonTests } = require('./services/vocabularyService');
 
 const bot = new TelegramBot(config.botToken, { polling: true });
 let pollingRestartTimer = null;
@@ -45,6 +46,15 @@ async function restartPolling() {
       pollingRestartTimer = null;
     }
   }, 5000);
+}
+
+async function warmupTests() {
+  try {
+    const tests = await getLessonTests();
+    console.log(`Testlar yuklandi: ${tests.length} ta.`);
+  } catch (error) {
+    await safeLogError(error, { place: 'warmupTests' });
+  }
 }
 
 function startHealthServer() {
@@ -138,5 +148,7 @@ process.on('SIGINT', () => {
 });
 
 startHealthServer();
+console.log('Telegram polling yoqildi.');
+warmupTests();
 
 console.log(`${config.botName} ishga tushdi.`);

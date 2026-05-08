@@ -3,6 +3,7 @@ const path = require('path');
 
 const dataDir = path.join(__dirname, '..', '..', 'data');
 const statsFilePath = path.join(dataDir, 'user-stats.json');
+const STATS_VERSION = 1;
 
 function ensureDataDir() {
   fs.mkdirSync(dataDir, { recursive: true });
@@ -10,6 +11,7 @@ function ensureDataDir() {
 
 function createEmptyStats() {
   return {
+    version: STATS_VERSION,
     users: {},
     lastAddedUserId: null
   };
@@ -18,6 +20,7 @@ function createEmptyStats() {
 function normalizeStats(stats) {
   const base = createEmptyStats();
   return {
+    version: Number(stats?.version || STATS_VERSION),
     users: stats?.users || base.users,
     lastAddedUserId: stats?.lastAddedUserId || null
   };

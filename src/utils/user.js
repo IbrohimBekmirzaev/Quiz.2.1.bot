@@ -11,10 +11,8 @@ function buildUserBlock(user, chatId) {
   return [
     `👤 ${getFullName(user)}`,
     `🔗 ${getUsername(user)}`,
-    `🆔 ${user?.id || ''}`,
-    `UID: ${user?.id || ''}`,
-    `💬 Chat ID: ${chatId}`,
-    `📱 Manba: Telegram Bot`
+    `🆔 ${user?.id || 'Noma\'lum'}`,
+    `💬 Chat ID: ${chatId || 'Noma\'lum'}`
   ].join('\n');
 }
 

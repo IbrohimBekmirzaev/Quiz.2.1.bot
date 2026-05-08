@@ -2,10 +2,12 @@ const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
 const config = require('../config');
+const { formatOptionLabel } = require('../utils/quiz');
 
 let cachedPayload = null;
 let cachedAt = 0;
 const CACHE_MS = 1000 * 60 * 30;
+const CACHE_VERSION = 1;
 const dataDir = path.join(__dirname, '..', '..', 'data');
 const vocabularyCacheFilePath = path.join(dataDir, 'vocabulary-cache.json');
 
@@ -19,7 +21,11 @@ function ensureDataDir() {
 
 function saveVocabularyCache(payload) {
   ensureDataDir();
-  fs.writeFileSync(vocabularyCacheFilePath, JSON.stringify(payload, null, 2), 'utf8');
+  fs.writeFileSync(vocabularyCacheFilePath, JSON.stringify({
+    version: CACHE_VERSION,
+    cachedAt: new Date().toISOString(),
+    ...payload
+  }, null, 2), 'utf8');
 }
 
 function readVocabularyCache() {
@@ -216,12 +222,20 @@ function pickQuestions(sourceItems, allItems, count) {
   const base = shuffle(sourceItems).slice(0, count);
   return base.map((item) => {
     const wrongPool = [...new Set(allItems.map((x) => x.uzbek).filter((value) => value && value !== item.uzbek))];
-    const options = shuffle([item.uzbek, ...shuffle(wrongPool).slice(0, 3)]).slice(0, 4);
+    const options = shuffle([item.uzbek, ...shuffle(wrongPool).slice(0, 6)])
+      .slice(0, 4)
+      .map((value) => formatOptionLabel(value));
+    const correctAnswer = formatOptionLabel(item.uzbek);
+    const uniqueOptions = [...new Set(options)];
+    while (uniqueOptions.length < 4) {
+      uniqueOptions.push(`Variant ${uniqueOptions.length + 1}`);
+    }
+
     return {
       arabic: item.arabic,
-      correctAnswer: item.uzbek,
-      options,
-      correctIndex: options.indexOf(item.uzbek)
+      correctAnswer,
+      options: uniqueOptions.slice(0, 4),
+      correctIndex: uniqueOptions.indexOf(correctAnswer)
     };
   });
 }
