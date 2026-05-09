@@ -13,8 +13,10 @@ const state = {
   currentQuiz: null,
   selectedAnswers: [],
   result: null,
-  loading: true
+  timerNow: Date.now()
 };
+
+let timerHandle = null;
 
 function getTelegramUser() {
   const user = tg?.initDataUnsafe?.user;
@@ -78,13 +80,64 @@ function getLeaderboardItems() {
     : state.boot.leaderboard.allTime;
 }
 
+function formatTime(seconds) {
+  const mins = String(Math.floor(seconds / 60)).padStart(2, '0');
+  const secs = String(seconds % 60).padStart(2, '0');
+  return `${mins}:${secs}`;
+}
+
+function getQuizStats() {
+  if (!state.currentQuiz) {
+    return { answered: 0, correct: 0, wrong: 0, percent: 0 };
+  }
+
+  let answered = 0;
+  let correct = 0;
+  let wrong = 0;
+
+  state.currentQuiz.questions.forEach((question, index) => {
+    const selected = state.selectedAnswers[index];
+    if (selected === null || selected === undefined) return;
+    answered += 1;
+    if (selected === question.correctIndex) correct += 1;
+    else wrong += 1;
+  });
+
+  return {
+    answered,
+    correct,
+    wrong,
+    percent: state.currentQuiz.questions.length ? Math.round((answered / state.currentQuiz.questions.length) * 100) : 0
+  };
+}
+
+function getElapsedSeconds() {
+  if (!state.currentQuiz?.startedAt) return 0;
+  return Math.max(0, Math.floor((state.timerNow - state.currentQuiz.startedAt) / 1000));
+}
+
+function startTimer() {
+  stopTimer();
+  timerHandle = window.setInterval(() => {
+    state.timerNow = Date.now();
+    if (state.currentQuiz) render();
+  }, 1000);
+}
+
+function stopTimer() {
+  if (timerHandle) {
+    clearInterval(timerHandle);
+    timerHandle = null;
+  }
+}
+
 function renderHeader(profile) {
   return `
-    <section class="hero">
+    <section class="hero ${state.currentQuiz ? 'hero-compact' : ''}">
       <div class="hero-head">
         <div>
-          <div class="badge">Qalb Ul Arabiyya Mini App</div>
-          <h1>Quiz Studio</h1>
+          <div class="badge">Telegram Quiz Mini App</div>
+          <h1>${state.tab === 'rating' ? 'Rating Board' : state.tab === 'profile' ? 'My Profile' : 'Quiz Arena'}</h1>
           <p>Darslarni tanlang, quiz yeching va reytingda ko‘tariling.</p>
         </div>
         <button class="theme-toggle" data-action="toggle-theme">${state.theme === 'dark' ? '☀️' : '🌙'}</button>
@@ -106,77 +159,128 @@ function renderHeader(profile) {
   `;
 }
 
-function renderQuizSection(profile) {
-  const tests = state.boot?.tests || [];
-  const active = state.currentQuiz;
-  const result = state.result;
-
+function renderQuizList(tests) {
   return `
-    <section class="section ${state.tab === 'quiz' ? '' : 'hidden'}" id="tab-quiz">
-      <div class="section-head">
-        <div>
-          <div class="badge">Quiz</div>
-          <h2>Test paneli</h2>
-          <p>Bot bilan bir xil testlar shu yerda ham ishlaydi.</p>
-        </div>
-        <button class="secondary-button" data-action="refresh">Yangilash</button>
+    <div class="section-head">
+      <div>
+        <div class="badge">Test Selection</div>
+        <h2>Quiz Panel</h2>
+        <p>Test ustiga bossangiz shu dars ichiga kirib, quiz boshlanadi.</p>
       </div>
-      ${active ? renderActiveQuiz(active) : ''}
-      ${result ? renderQuizResult(result) : ''}
-      <div class="test-list">
-        ${tests.map((test) => `
-          <article class="quiz-card ${active?.test?.id === test.id ? 'active' : ''}">
-            <div class="quiz-row">
-              <div class="test-index">${String(test.id).padStart(2, '0')}</div>
-              <div>
-                <strong>${escapeHtml(test.name)}</strong>
-                <div class="muted">${test.questionCount} ta savol bazasi</div>
-              </div>
-              <button class="button" data-action="start-quiz" data-test-id="${test.id}">Boshlash</button>
+      <button class="secondary-button" data-action="refresh">Darslarni yangilash</button>
+    </div>
+    <div class="test-list">
+      ${tests.map((test) => `
+        <article class="quiz-card">
+          <div class="quiz-row">
+            <div class="test-index">${String(test.id).padStart(2, '0')}</div>
+            <div>
+              <strong>${escapeHtml(test.name)}</strong>
+              <div class="muted">${test.questionCount} ta savol bazasi</div>
+              <div class="quiz-link" data-action="start-quiz" data-test-id="${test.id}">Boshlash</div>
             </div>
-          </article>
-        `).join('')}
-      </div>
-    </section>
+          </div>
+        </article>
+      `).join('')}
+    </div>
   `;
 }
 
-function renderActiveQuiz(active) {
-  const question = active.questions[active.currentIndex];
-  if (!question) return '';
+function renderActiveQuiz() {
+  const active = state.currentQuiz;
+  const question = active?.questions?.[active.currentIndex];
+  if (!active || !question) return '';
+
+  const stats = getQuizStats();
+  const progressPercent = Math.max(8, Math.round(((active.currentIndex + 1) / active.questions.length) * 100));
+  const selectedIndex = state.selectedAnswers[active.currentIndex];
+  const isLastQuestion = active.currentIndex + 1 === active.questions.length;
 
   return `
-    <div class="question-card">
-      <div class="question-progress">Savol ${active.currentIndex + 1}/${active.questions.length}</div>
-      <div class="question-arabic">${escapeHtml(question.arabic)}</div>
-      <div class="quiz-options">
+    <section class="runner-screen">
+      <div class="runner-topbar">
+        <button class="runner-ghost" data-action="leave-quiz">Orqaga</button>
+        <div class="runner-top-actions">
+          <button class="runner-theme" data-action="toggle-theme">${state.theme === 'dark' ? '☀️' : '🌙'}</button>
+          <div class="runner-timer">
+            <small>Time</small>
+            <strong>${formatTime(getElapsedSeconds())}</strong>
+          </div>
+        </div>
+      </div>
+
+      <div class="runner-copy">
+        <div class="runner-badge">${escapeHtml(active.test.name)}</div>
+        <h2 class="runner-title">${escapeHtml(active.test.subtitle || 'So‘z boyligi testi')}</h2>
+      </div>
+
+      <div class="runner-metrics">
+        <article class="metric-card">
+          <small>Progress</small>
+          <strong>${active.currentIndex + 1}/${active.questions.length}</strong>
+        </article>
+        <article class="metric-card success">
+          <small>To‘g‘ri</small>
+          <strong>${stats.correct}</strong>
+        </article>
+        <article class="metric-card danger">
+          <small>Xato</small>
+          <strong>${stats.wrong}</strong>
+        </article>
+      </div>
+
+      <div class="runner-progress">
+        <div class="runner-progress-bar" style="width:${progressPercent}%"></div>
+      </div>
+
+      <div class="runner-word">
+        <div class="runner-arabic">${escapeHtml(question.arabic)}</div>
+      </div>
+
+      <div class="runner-options">
         ${question.options.map((option, index) => `
           <button
-            class="option-button ${state.selectedAnswers[active.currentIndex] === index ? 'selected' : ''}"
+            class="runner-option ${selectedIndex === index ? 'selected' : ''}"
             data-action="choose-answer"
             data-option-index="${index}"
-          >${escapeHtml(option)}</button>
+          >
+            <span class="runner-option-index">${index + 1}</span>
+            <span class="runner-option-label">${escapeHtml(option)}</span>
+          </button>
         `).join('')}
       </div>
-      <div class="row" style="margin-top: 14px">
-        <button class="secondary-button" data-action="prev-question" ${active.currentIndex === 0 ? 'disabled' : ''}>Orqaga</button>
-        ${active.currentIndex + 1 < active.questions.length
-          ? '<button class="button" data-action="next-question">Keyingi savol</button>'
-          : '<button class="button" data-action="finish-quiz">Testni yakunlash</button>'}
+
+      <div class="runner-nav">
+        <button class="runner-muted" data-action="prev-question" ${active.currentIndex === 0 ? 'disabled' : ''}>Oldingi</button>
+        ${!isLastQuestion
+          ? `<button class="runner-primary" data-action="next-question" ${selectedIndex === null || selectedIndex === undefined ? 'disabled' : ''}>Keyingi</button>`
+          : `<button class="runner-primary" data-action="finish-quiz" ${selectedIndex === null || selectedIndex === undefined ? 'disabled' : ''}>Yakunlash</button>`}
       </div>
-    </div>
+    </section>
   `;
 }
 
 function renderQuizResult(result) {
   return `
     <div class="result-panel">
-      <strong>So‘nggi natija</strong>
-      <div class="muted" style="margin-top: 8px">${escapeHtml(result.testName)}</div>
-      <div style="margin-top: 10px">✅ To‘g‘ri: ${result.correct}</div>
+      <div class="badge">Natija</div>
+      <strong style="display:block;margin-top:10px">${escapeHtml(result.testName)}</strong>
+      <div style="margin-top: 12px">✅ To‘g‘ri: ${result.correct}</div>
       <div>❌ Xato: ${result.wrong}</div>
       <div>📈 Foiz: ${result.percent}%</div>
     </div>
+  `;
+}
+
+function renderQuizSection() {
+  const tests = state.boot?.tests || [];
+  const result = state.result;
+
+  return `
+    <section class="section ${state.tab === 'quiz' ? '' : 'hidden'}" id="tab-quiz">
+      ${state.currentQuiz ? renderActiveQuiz() : renderQuizList(tests)}
+      ${!state.currentQuiz && result ? renderQuizResult(result) : ''}
+    </section>
   `;
 }
 
@@ -189,9 +293,9 @@ function renderRatingSection() {
     <section class="section ${state.tab === 'rating' ? '' : 'hidden'}" id="tab-rating">
       <div class="section-head">
         <div>
-          <div class="badge">Reyting</div>
-          <h2>Rating Board</h2>
-          <p>Mini App ichida yechilgan testlar bo‘yicha shakllanadi.</p>
+          <div class="badge">Rating</div>
+          <h2>Rating</h2>
+          <p>Quiz yechgan foydalanuvchilar reytingi.</p>
         </div>
       </div>
       <div class="rating-switch">
@@ -201,7 +305,7 @@ function renderRatingSection() {
       <div class="top-three">
         ${top.map((item, index) => `
           <article class="leader-card ${index === 0 ? 'primary' : ''}">
-            <div class="avatar" style="margin: 0 auto 12px; width: 72px; height: 72px">${item.avatarUrl ? `<img src="${item.avatarUrl}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">` : initials(item.displayName)}</div>
+            <div class="avatar leader-avatar" style="margin: 0 auto 12px;">${item.avatarUrl ? `<img src="${item.avatarUrl}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">` : initials(item.displayName)}</div>
             <strong>#${item.rank}</strong>
             <div style="margin-top:8px">${escapeHtml(item.displayName)}</div>
             <div class="muted" style="margin-top:6px">${item.points} ball</div>
@@ -229,9 +333,9 @@ function renderProfileSection(profile) {
     <section class="section ${state.tab === 'profile' ? '' : 'hidden'}" id="tab-profile">
       <div class="section-head">
         <div>
-          <div class="badge">Profile</div>
-          <h2>My Profile</h2>
-          <p>Ko‘rinadigan nom va umumiy ko‘rsatkichlar.</p>
+          <div class="badge">User Profile</div>
+          <h2>${escapeHtml(profile.displayName)}</h2>
+          <p>Ko‘rinadigan nom va ko‘rsatkichlar.</p>
         </div>
       </div>
       <div class="profile-form">
@@ -242,30 +346,12 @@ function renderProfileSection(profile) {
         </div>
       </div>
       <div class="stats-grid">
-        <article class="stat-card">
-          <small class="muted">All-time ball</small>
-          <strong>${profile.points}</strong>
-        </article>
-        <article class="stat-card">
-          <small class="muted">Aniqlik</small>
-          <strong>${profile.totalCorrect + profile.totalWrong ? Math.round((profile.totalCorrect / (profile.totalCorrect + profile.totalWrong)) * 100) : 0}%</strong>
-        </article>
-        <article class="stat-card">
-          <small class="muted">Weekly ball</small>
-          <strong>${profile.weeklyPoints}</strong>
-        </article>
-        <article class="stat-card">
-          <small class="muted">Urinishlar</small>
-          <strong>${profile.attempts}</strong>
-        </article>
-        <article class="stat-card">
-          <small class="muted">Reyting</small>
-          <strong>#${profile.allTimeRank || '-'}</strong>
-        </article>
-        <article class="stat-card">
-          <small class="muted">Best score</small>
-          <strong>${profile.bestScore}%</strong>
-        </article>
+        <article class="stat-card"><small class="muted">All-time ball</small><strong>${profile.points}</strong></article>
+        <article class="stat-card"><small class="muted">Aniqlik</small><strong>${profile.totalCorrect + profile.totalWrong ? Math.round((profile.totalCorrect / (profile.totalCorrect + profile.totalWrong)) * 100) : 0}%</strong></article>
+        <article class="stat-card"><small class="muted">Weekly ball</small><strong>${profile.weeklyPoints}</strong></article>
+        <article class="stat-card"><small class="muted">Urinishlar</small><strong>${profile.attempts}</strong></article>
+        <article class="stat-card"><small class="muted">Reyting</small><strong>#${profile.allTimeRank || '-'}</strong></article>
+        <article class="stat-card"><small class="muted">Best score</small><strong>${profile.bestScore}%</strong></article>
       </div>
     </section>
   `;
@@ -275,7 +361,7 @@ function renderTabs() {
   return `
     <nav class="tabs">
       ${['quiz', 'rating', 'profile'].map((tab) => `
-        <button class="tab-button ${state.tab === tab ? 'active' : ''}" data-action="tab" data-tab="${tab}">
+        <button class="tab-button ${state.tab === tab ? 'active' : ''} ${state.currentQuiz && tab !== 'quiz' ? 'disabled' : ''}" data-action="tab" data-tab="${tab}">
           ${tab === 'quiz' ? 'Quiz' : tab === 'rating' ? 'Rating' : 'Profile'}
         </button>
       `).join('')}
@@ -296,9 +382,17 @@ function render() {
   }
 
   const profile = getProfile();
+  if (state.currentQuiz) {
+    app.innerHTML = `
+      ${renderQuizSection()}
+      ${renderTabs()}
+    `;
+    return;
+  }
+
   app.innerHTML = `
     ${renderHeader(profile)}
-    ${renderQuizSection(profile)}
+    ${renderQuizSection()}
     ${renderRatingSection()}
     ${renderProfileSection(profile)}
     ${renderTabs()}
@@ -307,17 +401,13 @@ function render() {
 
 async function bootstrap() {
   setTheme(state.theme);
-  const data = await api('/api/mini-app/bootstrap', {
-    user: getTelegramUser()
-  });
+  const data = await api('/api/mini-app/bootstrap', { user: getTelegramUser() });
   state.boot = data;
   render();
 }
 
 async function refreshBoot() {
-  const data = await api('/api/mini-app/bootstrap', {
-    user: getTelegramUser()
-  });
+  const data = await api('/api/mini-app/bootstrap', { user: getTelegramUser() });
   state.boot = data;
   render();
 }
@@ -327,15 +417,19 @@ async function startQuiz(testId) {
     user: getTelegramUser(),
     testIndex: Number(testId)
   });
+
   state.currentQuiz = {
     quizId: data.quizId,
     test: data.test,
     questions: data.questions,
-    currentIndex: 0
+    currentIndex: 0,
+    startedAt: Date.now()
   };
   state.selectedAnswers = new Array(data.questions.length).fill(null);
   state.result = null;
   state.tab = 'quiz';
+  state.timerNow = Date.now();
+  startTimer();
   render();
 }
 
@@ -345,6 +439,7 @@ async function finishQuiz() {
     quizId: state.currentQuiz.quizId,
     answers: state.selectedAnswers
   });
+  stopTimer();
   state.result = data;
   state.boot.user = data.profile;
   state.boot.leaderboard = data.leaderboard;
@@ -364,6 +459,13 @@ async function saveProfile() {
   render();
 }
 
+function leaveQuiz() {
+  stopTimer();
+  state.currentQuiz = null;
+  state.selectedAnswers = [];
+  render();
+}
+
 document.addEventListener('click', async (event) => {
   const trigger = event.target.closest('[data-action]');
   if (!trigger) return;
@@ -377,6 +479,7 @@ document.addEventListener('click', async (event) => {
   }
 
   if (action === 'tab') {
+    if (state.currentQuiz && trigger.dataset.tab !== 'quiz') return;
     state.tab = trigger.dataset.tab;
     render();
     return;
@@ -398,6 +501,11 @@ document.addEventListener('click', async (event) => {
     return;
   }
 
+  if (action === 'leave-quiz') {
+    leaveQuiz();
+    return;
+  }
+
   if (action === 'choose-answer') {
     state.selectedAnswers[state.currentQuiz.currentIndex] = Number(trigger.dataset.optionIndex);
     render();
@@ -411,6 +519,7 @@ document.addEventListener('click', async (event) => {
   }
 
   if (action === 'next-question') {
+    if (state.selectedAnswers[state.currentQuiz.currentIndex] === null) return;
     state.currentQuiz.currentIndex = Math.min(state.currentQuiz.questions.length - 1, state.currentQuiz.currentIndex + 1);
     render();
     return;

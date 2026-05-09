@@ -58,12 +58,14 @@ async function startMiniAppQuiz(userPayload, testIndex) {
     quizId,
     test: {
       id: test.id,
-      name: test.name
+      name: test.name,
+      subtitle: 'So\'z boyligi testi'
     },
     questions: questions.map((question, index) => ({
       index,
       arabic: question.arabic,
-      options: question.options
+      options: question.options,
+      correctIndex: question.correctIndex
     }))
   };
 }
