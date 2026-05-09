@@ -196,8 +196,39 @@ function renderQuizList(tests) {
 
 function renderActiveQuiz() {
   const active = state.currentQuiz;
-  const question = active?.questions?.[active.currentIndex];
-  if (!active || !question) return '';
+  if (!active) return '';
+
+  if (active.result) {
+    const nextTestId = getNextTestId(active.test.id);
+    return `
+      <section class="runner-screen">
+        <div class="runner-topbar">
+          <button class="runner-ghost" data-action="leave-quiz">Orqaga</button>
+          <div class="runner-top-actions">
+            <button class="runner-theme" data-action="toggle-theme">${state.theme === 'dark' ? '☀️' : '🌙'}</button>
+          </div>
+        </div>
+
+        <div class="runner-copy">
+          <div class="runner-badge">Natija</div>
+          <h2 class="runner-title">${escapeHtml(active.result.testName)}</h2>
+        </div>
+
+        <div class="result-panel runner-result">
+          <div style="margin-top: 4px">✅ To‘g‘ri: ${active.result.correct}</div>
+          <div>❌ Xato: ${active.result.wrong}</div>
+          <div>📈 Foiz: ${active.result.percent}%</div>
+          <div class="row" style="margin-top:14px">
+            <button class="secondary-button" data-action="restart-test" data-test-id="${active.test.id}">Qayta</button>
+            ${nextTestId ? `<button class="button" data-action="start-quiz" data-test-id="${nextTestId}">Keyingi test</button>` : ''}
+          </div>
+        </div>
+      </section>
+    `;
+  }
+
+  const question = active.questions?.[active.currentIndex];
+  if (!question) return '';
 
   const stats = getQuizStats();
   const progressPercent = Math.max(8, Math.round(((active.currentIndex + 1) / active.questions.length) * 100));
@@ -267,7 +298,6 @@ function renderActiveQuiz() {
 }
 
 function renderQuizResult(result) {
-  const nextTestId = getNextTestId(result.testIndex);
   return `
     <div class="result-panel">
       <div class="badge">Natija</div>
@@ -275,22 +305,16 @@ function renderQuizResult(result) {
       <div style="margin-top: 12px">✅ To‘g‘ri: ${result.correct}</div>
       <div>❌ Xato: ${result.wrong}</div>
       <div>📈 Foiz: ${result.percent}%</div>
-      <div class="row" style="margin-top:14px">
-        <button class="secondary-button" data-action="restart-test" data-test-id="${result.testIndex}">Qayta</button>
-        ${nextTestId ? `<button class="button" data-action="start-quiz" data-test-id="${nextTestId}">Keyingi test</button>` : ''}
-      </div>
     </div>
   `;
 }
 
 function renderQuizSection() {
   const tests = state.boot?.tests || [];
-  const result = state.result;
 
   return `
     <section class="section ${state.tab === 'quiz' ? '' : 'hidden'}" id="tab-quiz">
       ${state.currentQuiz ? renderActiveQuiz() : renderQuizList(tests)}
-      ${!state.currentQuiz && result ? renderQuizResult(result) : ''}
     </section>
   `;
 }
@@ -455,8 +479,10 @@ async function finishQuiz() {
   state.result = data;
   state.boot.user = data.profile;
   state.boot.leaderboard = data.leaderboard;
-  state.currentQuiz = null;
-  state.selectedAnswers = [];
+  state.currentQuiz = {
+    ...state.currentQuiz,
+    result: data
+  };
   state.autoAdvanceLock = false;
   render();
 }
