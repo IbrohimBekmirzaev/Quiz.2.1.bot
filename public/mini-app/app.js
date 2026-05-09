@@ -420,7 +420,6 @@ function render() {
   if (state.currentQuiz) {
     app.innerHTML = `
       ${renderQuizSection()}
-      ${renderTabs()}
     `;
     return;
   }

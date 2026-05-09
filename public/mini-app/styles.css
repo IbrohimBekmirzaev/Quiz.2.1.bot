@@ -300,8 +300,8 @@ body {
 
 .runner-screen {
   display: grid;
-  gap: 18px;
-  padding: 4px 0 0;
+  gap: 14px;
+  padding: 0;
 }
 
 .runner-topbar {
@@ -315,6 +315,7 @@ body {
   display: flex;
   gap: 12px;
   margin-left: auto;
+  align-items: stretch;
 }
 
 .runner-ghost,
@@ -330,22 +331,22 @@ body {
 .runner-ghost {
   min-width: 116px;
   border-radius: 20px;
-  padding: 16px 18px;
+  padding: 14px 18px;
   background: rgba(255,255,255,0.04);
   color: var(--text);
 }
 
 .runner-theme {
-  width: 60px;
+  width: 56px;
   border-radius: 20px;
   background: rgba(255,255,255,0.04);
   color: var(--text);
-  font-size: 20px;
+  font-size: 18px;
 }
 
 .runner-timer {
-  min-width: 150px;
-  padding: 14px 18px;
+  min-width: 138px;
+  padding: 12px 16px;
   border-radius: 24px;
   border: 1px solid var(--line);
   background: rgba(255,255,255,0.04);
@@ -364,39 +365,39 @@ body {
 
 .runner-timer strong {
   display: block;
-  margin-top: 8px;
-  font-size: 34px;
+  margin-top: 6px;
+  font-size: 30px;
   line-height: 1;
 }
 
 .runner-copy {
   display: grid;
-  gap: 8px;
+  gap: 6px;
 }
 
 .runner-title {
   margin: 0;
-  font-size: 22px;
+  font-size: 18px;
   line-height: 1.08;
 }
 
 .runner-metrics {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
+  gap: 10px;
 }
 
 .metric-card {
-  padding: 16px;
-  border-radius: 24px;
+  padding: 14px;
+  border-radius: 20px;
   border: 1px solid var(--line);
   background: rgba(255,255,255,0.03);
 }
 
 .metric-card strong {
   display: block;
-  margin-top: 10px;
-  font-size: 34px;
+  margin-top: 8px;
+  font-size: 26px;
   line-height: 1;
 }
 
@@ -410,7 +411,7 @@ body {
 
 .runner-progress {
   width: 100%;
-  height: 8px;
+  height: 7px;
   border-radius: 999px;
   overflow: hidden;
   background: rgba(160, 183, 218, 0.18);
@@ -423,12 +424,12 @@ body {
 }
 
 .runner-word {
-  padding: 4px 0 6px;
+  padding: 0 0 2px;
 }
 
 .runner-arabic {
   font-family: "Noto Naskh Arabic", serif;
-  font-size: 88px;
+  font-size: 72px;
   line-height: 1.1;
   text-align: center;
   font-weight: 800;
@@ -437,7 +438,7 @@ body {
 
 .runner-options {
   display: grid;
-  gap: 14px;
+  gap: 12px;
 }
 
 .runner-option {
@@ -445,9 +446,9 @@ body {
   display: grid;
   grid-template-columns: 44px 1fr;
   align-items: center;
-  gap: 16px;
-  padding: 20px 18px;
-  border-radius: 26px;
+  gap: 14px;
+  padding: 16px 16px;
+  border-radius: 22px;
   border: 1px solid var(--line);
   background: rgba(255,255,255,0.03);
   color: var(--text);
@@ -477,20 +478,20 @@ body {
 }
 
 .runner-option-label {
-  font-size: 18px;
+  font-size: 16px;
   line-height: 1.35;
 }
 
 .runner-nav {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 12px;
+  gap: 10px;
 }
 
 .runner-muted,
 .runner-primary {
-  padding: 16px 18px;
-  border-radius: 20px;
+  padding: 14px 16px;
+  border-radius: 18px;
 }
 
 .runner-muted {
@@ -650,30 +651,49 @@ html[data-theme="light"] .tabs {
   .profile-row,
   .summary-row,
   .quiz-row { grid-template-columns: 1fr; }
-  .quiz-start-button {
-    width: 100%;
-  }
-  .runner-topbar,
-  .runner-top-actions,
-  .runner-metrics,
-  .runner-nav { grid-template-columns: 1fr; }
-  .runner-topbar,
-  .runner-top-actions {
-    display: grid;
-  }
-  .runner-ghost,
-  .runner-timer,
-  .runner-theme {
-    width: 100%;
-    min-width: 0;
-  }
-  .runner-timer {
-    text-align: left;
-  }
   .runner-arabic {
-    font-size: 68px;
+    font-size: 58px;
   }
   .runner-option-label {
-    font-size: 17px;
+    font-size: 15px;
+  }
+  .runner-topbar {
+    gap: 10px;
+  }
+  .runner-top-actions {
+    gap: 10px;
+  }
+  .runner-ghost {
+    min-width: 92px;
+    padding: 12px 14px;
+  }
+  .runner-theme {
+    width: 50px;
+  }
+  .runner-timer {
+    min-width: 122px;
+    padding: 10px 14px;
+  }
+  .runner-timer strong {
+    font-size: 24px;
+  }
+  .runner-metrics {
+    gap: 8px;
+  }
+  .metric-card {
+    padding: 12px;
+  }
+  .metric-card strong {
+    font-size: 22px;
+  }
+  .runner-option {
+    padding: 14px 14px;
+    border-radius: 20px;
+  }
+  .runner-nav {
+    position: sticky;
+    bottom: 0;
+    padding-top: 4px;
+    background: linear-gradient(180deg, rgba(9,17,31,0), rgba(9,17,31,0.82) 32%, rgba(9,17,31,0.98));
   }
 }
