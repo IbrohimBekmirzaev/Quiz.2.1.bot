@@ -306,7 +306,7 @@ body {
 
 .runner-screen {
   display: grid;
-  gap: 10px;
+  gap: 8px;
   padding: 0;
 }
 
@@ -378,12 +378,12 @@ body {
 
 .runner-copy {
   display: grid;
-  gap: 4px;
+  gap: 2px;
 }
 
 .runner-title {
   margin: 0;
-  font-size: 16px;
+  font-size: 15px;
   line-height: 1.08;
 }
 
@@ -394,7 +394,7 @@ body {
 }
 
 .metric-card {
-  padding: 12px;
+  padding: 10px;
   border-radius: 18px;
   border: 1px solid var(--line);
   background: rgba(255,255,255,0.03);
@@ -402,8 +402,8 @@ body {
 
 .metric-card strong {
   display: block;
-  margin-top: 6px;
-  font-size: 22px;
+  margin-top: 4px;
+  font-size: 20px;
   line-height: 1;
 }
 
@@ -430,13 +430,13 @@ body {
 }
 
 .runner-word {
-  padding: 0;
+  padding: 0 0 2px;
 }
 
 .runner-arabic {
   font-family: "Noto Naskh Arabic", serif;
-  font-size: 62px;
-  line-height: 1.1;
+  font-size: 56px;
+  line-height: 1.02;
   text-align: center;
   font-weight: 800;
   letter-spacing: 0;
@@ -444,7 +444,7 @@ body {
 
 .runner-options {
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 .runner-option {
@@ -452,9 +452,9 @@ body {
   display: grid;
   grid-template-columns: 38px 1fr;
   align-items: center;
-  gap: 12px;
-  padding: 13px 14px;
-  border-radius: 18px;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 16px;
   border: 1px solid var(--line);
   background: rgba(255,255,255,0.03);
   color: var(--text);
@@ -484,8 +484,8 @@ body {
 }
 
 .runner-option-label {
-  font-size: 15px;
-  line-height: 1.28;
+  font-size: 14px;
+  line-height: 1.2;
 }
 
 .runner-nav {
@@ -496,7 +496,7 @@ body {
 
 .runner-muted,
 .runner-primary {
-  padding: 12px 14px;
+  padding: 10px 12px;
   border-radius: 16px;
 }
 
@@ -665,10 +665,10 @@ html[data-theme="light"] .tabs {
     min-height: calc(100vh - 12px);
   }
   .runner-arabic {
-    font-size: 52px;
+    font-size: 48px;
   }
   .runner-option-label {
-    font-size: 14px;
+    font-size: 13px;
   }
   .runner-topbar {
     gap: 8px;
@@ -700,22 +700,28 @@ html[data-theme="light"] .tabs {
     padding: 10px;
   }
   .metric-card strong {
-    font-size: 18px;
+    font-size: 17px;
   }
   .runner-option {
     grid-template-columns: 34px 1fr;
-    gap: 10px;
-    padding: 11px 12px;
-    border-radius: 16px;
+    gap: 8px;
+    padding: 9px 10px;
+    border-radius: 14px;
   }
   .runner-option-index {
-    width: 34px;
-    height: 34px;
+    width: 30px;
+    height: 30px;
+    font-size: 13px;
   }
   .runner-nav {
     position: sticky;
     bottom: 0;
     padding-top: 2px;
     background: linear-gradient(180deg, rgba(9,17,31,0), rgba(9,17,31,0.82) 32%, rgba(9,17,31,0.98));
+  }
+  .runner-muted,
+  .runner-primary {
+    padding: 9px 10px;
+    font-size: 14px;
   }
 }
