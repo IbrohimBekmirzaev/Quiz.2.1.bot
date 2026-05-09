@@ -14,7 +14,8 @@ const state = {
   selectedAnswers: [],
   result: null,
   timerNow: Date.now(),
-  autoAdvanceLock: false
+  autoAdvanceLock: false,
+  profileAvatarDraft: null
 };
 
 let timerHandle = null;
@@ -72,6 +73,10 @@ function escapeHtml(value) {
 
 function getProfile() {
   return state.boot?.user || null;
+}
+
+function getCurrentUserId() {
+  return String(getProfile()?.id || '');
 }
 
 function getLeaderboardItems() {
@@ -323,36 +328,40 @@ function renderRatingSection() {
   const items = getLeaderboardItems();
   const top = items.slice(0, 3);
   const rest = items.slice(3, 20);
+  const podium = [top[1], top[0], top[2]].filter(Boolean);
+  const currentUserId = getCurrentUserId();
 
   return `
     <section class="section ${state.tab === 'rating' ? '' : 'hidden'}" id="tab-rating">
       <div class="section-head">
         <div>
           <div class="badge">Rating</div>
-          <h2>Rating</h2>
-          <p>Quiz yechgan foydalanuvchilar reytingi.</p>
+          <h2>Rating Board</h2>
+          <p>Mini app ichida yechilgan testlar bo‘yicha jonli reyting.</p>
         </div>
       </div>
       <div class="rating-switch">
         <button class="${state.ratingMode === 'allTime' ? 'active' : ''}" data-action="rating-mode" data-mode="allTime">All-time</button>
         <button class="${state.ratingMode === 'weekly' ? 'active' : ''}" data-action="rating-mode" data-mode="weekly">7 kun</button>
       </div>
-      <div class="top-three">
-        ${top.map((item, index) => `
-          <article class="leader-card ${index === 0 ? 'primary' : ''}">
-            <div class="avatar leader-avatar" style="margin: 0 auto 12px;">${item.avatarUrl ? `<img src="${item.avatarUrl}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">` : initials(item.displayName)}</div>
-            <strong>#${item.rank}</strong>
-            <div style="margin-top:8px">${escapeHtml(item.displayName)}</div>
-            <div class="muted" style="margin-top:6px">${item.points} ball</div>
+      <div class="top-three podium">
+        ${podium.map((item) => `
+          <article class="leader-card ${item.rank === 1 ? 'primary podium-center' : 'podium-side'} ${item.id === currentUserId ? 'leader-self' : ''}">
+            <div class="podium-rank">#${item.rank}</div>
+            <div class="avatar leader-avatar">${item.avatarUrl ? `<img src="${item.avatarUrl}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">` : initials(item.displayName)}</div>
+            <strong class="podium-name">${escapeHtml(item.displayName)}</strong>
+            <div class="muted podium-points">${item.points} ball</div>
           </article>
         `).join('')}
       </div>
       <div class="leader-list">
         ${rest.map((item) => `
-          <div class="leader-list-item">
+          <div class="leader-list-item ${item.id === currentUserId ? 'leader-self' : ''}">
             <strong>#${item.rank}</strong>
+            <div class="avatar leader-list-avatar">${item.avatarUrl ? `<img src="${item.avatarUrl}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">` : initials(item.displayName)}</div>
             <div>
               <div>${escapeHtml(item.displayName)}</div>
+              <div class="muted">${escapeHtml(item.username)}</div>
               <div class="muted">To‘g‘ri ${item.totalCorrect} | Xato ${item.totalWrong} | Urinish ${item.attempts}</div>
             </div>
             <strong>${item.points}</strong>
@@ -364,32 +373,86 @@ function renderRatingSection() {
 }
 
 function renderProfileSection(profile) {
+  const avatarPreview = state.profileAvatarDraft || profile.avatarUrl || '';
+  const accuracy = profile.totalCorrect + profile.totalWrong
+    ? Math.round((profile.totalCorrect / (profile.totalCorrect + profile.totalWrong)) * 100)
+    : 0;
+
   return `
     <section class="section ${state.tab === 'profile' ? '' : 'hidden'}" id="tab-profile">
       <div class="section-head">
         <div>
           <div class="badge">User Profile</div>
-          <h2>${escapeHtml(profile.displayName)}</h2>
-          <p>Ko‘rinadigan nom va ko‘rsatkichlar.</p>
+          <h2>My Profile</h2>
+          <p>Profilingizni bezang va natijalaringizni kuzatib boring.</p>
         </div>
       </div>
-      <div class="profile-form">
-        <input class="input" id="displayNameInput" value="${escapeHtml(profile.displayName)}" placeholder="Ko‘rinadigan nom" />
-        <input class="input" id="avatarInput" value="${escapeHtml(profile.avatarUrl || '')}" placeholder="Avatar URL (ixtiyoriy)" />
-        <div class="row">
-          <button class="button" data-action="save-profile">Nomni saqlash</button>
+      <div class="profile-hero-card">
+        <div class="avatar profile-hero-avatar">${avatarPreview ? `<img src="${avatarPreview}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">` : initials(profile.displayName)}</div>
+        <div>
+          <div class="badge">User Profile</div>
+          <h3>${escapeHtml(profile.displayName)}</h3>
+          <p>${escapeHtml(profile.username)} • ID ${escapeHtml(profile.id)}</p>
         </div>
       </div>
-      <div class="stats-grid">
-        <article class="stat-card"><small class="muted">All-time ball</small><strong>${profile.points}</strong></article>
-        <article class="stat-card"><small class="muted">Aniqlik</small><strong>${profile.totalCorrect + profile.totalWrong ? Math.round((profile.totalCorrect / (profile.totalCorrect + profile.totalWrong)) * 100) : 0}%</strong></article>
-        <article class="stat-card"><small class="muted">Weekly ball</small><strong>${profile.weeklyPoints}</strong></article>
-        <article class="stat-card"><small class="muted">Urinishlar</small><strong>${profile.attempts}</strong></article>
-        <article class="stat-card"><small class="muted">Reyting</small><strong>#${profile.allTimeRank || '-'}</strong></article>
-        <article class="stat-card"><small class="muted">Best score</small><strong>${profile.bestScore}%</strong></article>
+      <div class="profile-editor">
+        <div class="profile-avatar-panel">
+          <div class="avatar profile-large-avatar">${avatarPreview ? `<img src="${avatarPreview}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">` : initials(profile.displayName)}</div>
+          <input class="input" id="displayNameInput" value="${escapeHtml(profile.displayName)}" placeholder="Ko‘rinadigan nom" />
+          <input type="file" id="avatarFileInput" accept="image/*" class="hidden-file-input" />
+          <div class="row">
+            <button class="secondary-button" data-action="pick-avatar">Avatar yuklash</button>
+            <button class="button" data-action="save-profile">Saqlash</button>
+          </div>
+          <div class="profile-helper">PNG yoki JPG rasm tanlashingiz mumkin.</div>
+        </div>
+        <div class="profile-scoreboard">
+          <article class="stat-card profile-stat featured"><small class="muted">All-time ball</small><strong>${profile.points}</strong></article>
+          <article class="stat-card profile-stat accuracy"><small class="muted">Aniqlik</small><strong>${accuracy}%</strong></article>
+          <article class="stat-card profile-stat"><small class="muted">Weekly ball</small><strong>${profile.weeklyPoints}</strong></article>
+          <article class="stat-card profile-stat"><small class="muted">Urinishlar</small><strong>${profile.attempts}</strong></article>
+          <article class="stat-card profile-stat"><small class="muted">All-time rank</small><strong>#${profile.allTimeRank || '-'}</strong></article>
+          <article class="stat-card profile-stat"><small class="muted">Best score</small><strong>${profile.bestScore}%</strong></article>
+        </div>
       </div>
     </section>
   `;
+}
+
+function resizeImageFile(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const image = new Image();
+      image.onload = () => {
+        const size = 256;
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          reject(new Error('Canvas yaratilmadi.'));
+          return;
+        }
+
+        ctx.fillStyle = '#10203b';
+        ctx.fillRect(0, 0, size, size);
+
+        const scale = Math.max(size / image.width, size / image.height);
+        const width = image.width * scale;
+        const height = image.height * scale;
+        const x = (size - width) / 2;
+        const y = (size - height) / 2;
+
+        ctx.drawImage(image, x, y, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.88));
+      };
+      image.onerror = () => reject(new Error('Rasm o‘qilmadi.'));
+      image.src = String(reader.result || '');
+    };
+    reader.onerror = () => reject(new Error('Fayl o‘qilmadi.'));
+    reader.readAsDataURL(file);
+  });
 }
 
 function renderTabs() {
@@ -494,12 +557,13 @@ async function finishQuiz() {
 
 async function saveProfile() {
   const displayName = document.getElementById('displayNameInput')?.value || '';
-  const avatarUrl = document.getElementById('avatarInput')?.value || '';
+  const avatarUrl = state.profileAvatarDraft || state.boot?.user?.avatarUrl || '';
   const data = await api('/api/mini-app/profile', {
     user: getTelegramUser(),
     profile: { displayName, avatarUrl }
   });
   state.boot.user = data;
+  state.profileAvatarDraft = null;
   render();
 }
 
@@ -606,7 +670,22 @@ document.addEventListener('click', async (event) => {
 
   if (action === 'save-profile') {
     await saveProfile();
+    return;
   }
+
+  if (action === 'pick-avatar') {
+    document.getElementById('avatarFileInput')?.click();
+  }
+});
+
+document.addEventListener('change', async (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLInputElement)) return;
+  if (target.id !== 'avatarFileInput') return;
+  const [file] = Array.from(target.files || []);
+  if (!file) return;
+  state.profileAvatarDraft = await resizeImageFile(file);
+  render();
 });
 
 bootstrap().catch((error) => {
