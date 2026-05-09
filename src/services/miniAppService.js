@@ -1,15 +1,19 @@
-const { getVocabularyList } = require('./vocabularyService');
+const config = require('../config');
+const { getVocabularyList, pickQuestions } = require('./vocabularyService');
 const { getTests } = require('./quizService');
-const { pickQuestions } = require('./vocabularyService');
 const {
   registerMiniAppOpen,
   saveProfileSettings,
   createQuizSession,
+  updateQuizSessionProgress,
   getQuizSession,
+  getActiveQuizForUser,
   finishQuizSession,
   recordQuizAttempt,
   getLeaderboard,
-  getProfileView
+  getProfileView,
+  getMiniAppAnalytics,
+  dayKey
 } = require('../storage/miniAppStore');
 
 function normalizeTelegramUser(payload = {}) {
@@ -26,48 +30,128 @@ function normalizeTelegramUser(payload = {}) {
   };
 }
 
+function sanitizeQuestion(question, index) {
+  return {
+    index,
+    arabic: question.arabic,
+    options: question.options,
+    correctIndex: question.correctIndex,
+    correctAnswer: question.correctAnswer
+  };
+}
+
+function getDailyChallengeTest(tests) {
+  if (!tests.length) return null;
+  const key = dayKey().replaceAll('-', '');
+  const seed = Number(key.slice(-4));
+  const index = seed % tests.length;
+  return tests[index];
+}
+
+function buildTestList(tests, dailyChallengeId) {
+  return tests.map((test) => ({
+    id: test.id,
+    name: test.name,
+    questionCount: test.items.length,
+    isDailyChallenge: Number(test.id) === Number(dailyChallengeId)
+  }));
+}
+
+function buildResumeQuiz(session) {
+  if (!session) return null;
+  return {
+    quizId: session.quizId,
+    test: {
+      id: session.testIndex,
+      name: session.testName,
+      subtitle: session.isDailyChallenge ? 'Daily challenge' : 'So\'z boyligi testi'
+    },
+    currentIndex: Number(session.currentIndex || 0),
+    startedAt: Date.parse(session.startedAt || session.createdAt || new Date().toISOString()),
+    answers: Array.isArray(session.answers) ? session.answers : new Array(session.questions.length).fill(null),
+    isDailyChallenge: Boolean(session.isDailyChallenge),
+    questions: (session.questions || []).map((question, index) => sanitizeQuestion(question, index))
+  };
+}
+
+function isAdminUser(user) {
+  return config.adminUserIds.includes(String(user.id));
+}
+
 async function getMiniAppBootPayload(userPayload) {
   const user = normalizeTelegramUser(userPayload);
   registerMiniAppOpen(user);
   const tests = await getTests();
+  const dailyChallenge = getDailyChallengeTest(tests);
+  const activeQuiz = getActiveQuizForUser(user.id);
   return {
     user: getProfileView(user),
-    tests: tests.map((test) => ({
-      id: test.id,
-      name: test.name,
-      questionCount: test.items.length
-    })),
-    leaderboard: getLeaderboard()
+    tests: buildTestList(tests, dailyChallenge?.id),
+    leaderboard: getLeaderboard(),
+    dailyChallenge: dailyChallenge
+      ? {
+          id: dailyChallenge.id,
+          name: dailyChallenge.name,
+          questionCount: Math.min(dailyChallenge.items.length, config.questionsPerTest)
+        }
+      : null,
+    activeQuiz: buildResumeQuiz(activeQuiz),
+    analytics: isAdminUser(user) ? getMiniAppAnalytics() : null,
+    duelEnabled: false
   };
 }
 
-async function startMiniAppQuiz(userPayload, testIndex) {
+async function createQuestionsForTest(test) {
+  const allItems = await getVocabularyList();
+  return pickQuestions(test.items, allItems, test.items.length)
+    .slice(0, config.questionsPerTest)
+    .map((question, index) => sanitizeQuestion(question, index));
+}
+
+async function startMiniAppQuiz(userPayload, testIndex, options = {}) {
   const user = normalizeTelegramUser(userPayload);
   const tests = await getTests();
-  const allItems = await getVocabularyList();
   const test = tests.find((item) => item.id === Number(testIndex));
 
   if (!test) {
     throw new Error('Test topilmadi.');
   }
 
-  const questions = pickQuestions(test.items, allItems, test.items.length).slice(0, 10);
-  const quizId = createQuizSession(user, test, questions);
+  const questions = await createQuestionsForTest(test);
+  const quizId = createQuizSession(user, test, questions, {
+    isDailyChallenge: Boolean(options.isDailyChallenge)
+  });
 
   return {
     quizId,
     test: {
       id: test.id,
       name: test.name,
-      subtitle: 'So\'z boyligi testi'
+      subtitle: options.isDailyChallenge ? 'Daily challenge' : 'So\'z boyligi testi'
     },
-    questions: questions.map((question, index) => ({
-      index,
-      arabic: question.arabic,
-      options: question.options,
-      correctIndex: question.correctIndex
-    }))
+    currentIndex: 0,
+    answers: new Array(questions.length).fill(null),
+    startedAt: Date.now(),
+    isDailyChallenge: Boolean(options.isDailyChallenge),
+    questions
   };
+}
+
+function saveMiniAppQuizProgress(userPayload, payload = {}) {
+  const user = normalizeTelegramUser(userPayload);
+  const quizId = String(payload.quizId || '');
+  if (!quizId) throw new Error('Quiz session topilmadi.');
+
+  const session = updateQuizSessionProgress(quizId, user.id, {
+    answers: Array.isArray(payload.answers) ? payload.answers : undefined,
+    currentIndex: typeof payload.currentIndex === 'number' ? payload.currentIndex : undefined
+  });
+
+  if (!session) {
+    throw new Error('Quiz session topilmadi yoki yangilanmadi.');
+  }
+
+  return buildResumeQuiz(session);
 }
 
 function finishMiniAppQuiz(userPayload, payload = {}) {
@@ -90,21 +174,39 @@ function finishMiniAppQuiz(userPayload, payload = {}) {
 
   let correct = 0;
   let wrong = 0;
+  const mistakes = [];
+
   session.questions.forEach((question, index) => {
     const selectedIndex = Number(answers[index]);
-    if (selectedIndex === question.correctIndex) correct += 1;
-    else wrong += 1;
+    if (selectedIndex === question.correctIndex) {
+      correct += 1;
+      return;
+    }
+
+    wrong += 1;
+    mistakes.push({
+      arabic: question.arabic,
+      correctAnswer: question.correctAnswer,
+      selectedAnswer: question.options[selectedIndex] || ''
+    });
   });
 
   const total = correct + wrong;
   const percent = total ? Math.round((correct / total) * 100) : 0;
+  const durationSeconds = Math.max(
+    0,
+    Math.floor((Date.now() - Date.parse(session.startedAt || session.createdAt || new Date().toISOString())) / 1000)
+  );
 
   recordQuizAttempt(user, {
     testIndex: session.testIndex,
     testName: session.testName,
     correct,
     wrong,
-    percent
+    percent,
+    mistakes,
+    durationSeconds,
+    isDailyChallenge: Boolean(session.isDailyChallenge)
   });
   finishQuizSession(quizId);
 
@@ -114,8 +216,10 @@ function finishMiniAppQuiz(userPayload, payload = {}) {
     correct,
     wrong,
     percent,
+    durationSeconds,
     profile: getProfileView(user),
-    leaderboard: getLeaderboard()
+    leaderboard: getLeaderboard(),
+    analytics: isAdminUser(user) ? getMiniAppAnalytics() : null
   };
 }
 
@@ -129,6 +233,8 @@ module.exports = {
   normalizeTelegramUser,
   getMiniAppBootPayload,
   startMiniAppQuiz,
+  saveMiniAppQuizProgress,
   finishMiniAppQuiz,
-  updateMiniAppProfile
+  updateMiniAppProfile,
+  getDailyChallengeTest
 };

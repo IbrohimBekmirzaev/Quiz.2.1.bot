@@ -11,6 +11,7 @@ const { getLessonTests } = require('./services/vocabularyService');
 const {
   getMiniAppBootPayload,
   startMiniAppQuiz,
+  saveMiniAppQuizProgress,
   finishMiniAppQuiz,
   updateMiniAppProfile,
   normalizeTelegramUser
@@ -160,8 +161,16 @@ async function handleMiniAppApi(req, res, requestUrl) {
   }
 
   if (requestUrl.pathname === '/api/mini-app/quiz/start') {
-    const data = await startMiniAppQuiz(user, payload.testIndex);
+    const data = await startMiniAppQuiz(user, payload.testIndex, {
+      isDailyChallenge: Boolean(payload.isDailyChallenge)
+    });
     await logQuizStarted(bot, virtualMsg, data.test.name, 'mini_app');
+    sendJson(res, 200, { ok: true, data });
+    return;
+  }
+
+  if (requestUrl.pathname === '/api/mini-app/quiz/progress') {
+    const data = saveMiniAppQuizProgress(user, payload);
     sendJson(res, 200, { ok: true, data });
     return;
   }

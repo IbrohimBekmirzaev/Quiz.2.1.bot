@@ -62,6 +62,15 @@ function optionalNumber(name, fallback) {
   return n;
 }
 
+function optionalCsv(name) {
+  const raw = process.env[name];
+  if (!raw) return [];
+  return raw
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
 const adminGroupId = required('ADMIN_GROUP_ID');
 const primaryTopics = {
   start: toNumber('TOPIC_START_ID', 1),
@@ -116,6 +125,7 @@ module.exports = {
   topicUsersId: primaryTopics.users,
   secondLogGroupId,
   adminGroupIds,
+  adminUserIds: optionalCsv('ADMIN_USER_IDS'),
   logTargets,
   miniAppUrl,
   miniAppWebAppUrl,

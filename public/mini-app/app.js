@@ -15,7 +15,9 @@ const state = {
   result: null,
   timerNow: Date.now(),
   autoAdvanceLock: false,
-  profileAvatarDraft: null
+  profileAvatarDraft: null,
+  testSearch: '',
+  onboardingStep: 0
 };
 
 let timerHandle = null;
@@ -79,6 +81,29 @@ function getCurrentUserId() {
   return String(getProfile()?.id || '');
 }
 
+function haptic(kind = 'selection') {
+  const api = tg?.HapticFeedback;
+  if (!api) return;
+
+  try {
+    if (kind === 'success') {
+      api.notificationOccurred('success');
+      return;
+    }
+    if (kind === 'error') {
+      api.notificationOccurred('error');
+      return;
+    }
+    if (kind === 'impact') {
+      api.impactOccurred('light');
+      return;
+    }
+    api.selectionChanged();
+  } catch (_) {
+    // ignore
+  }
+}
+
 function getLeaderboardItems() {
   if (!state.boot?.leaderboard) return [];
   return state.ratingMode === 'weekly'
@@ -96,6 +121,13 @@ function getNextTestId(currentTestIndex) {
   const currentIndex = tests.findIndex((test) => test.id === Number(currentTestIndex));
   if (currentIndex === -1) return null;
   return tests[currentIndex + 1]?.id || null;
+}
+
+function getFilteredTests() {
+  const tests = state.boot?.tests || [];
+  const query = state.testSearch.trim().toLowerCase();
+  if (!query) return tests;
+  return tests.filter((test) => String(test.name || '').toLowerCase().includes(query));
 }
 
 function formatTime(seconds) {
@@ -178,7 +210,29 @@ function renderHeader(profile) {
 }
 
 function renderQuizList(tests) {
+  const dailyChallenge = state.boot?.dailyChallenge;
+  const resumableQuiz = state.boot?.activeQuiz;
   return `
+    ${resumableQuiz ? `
+      <div class="resume-card">
+        <div>
+          <div class="badge">Continue</div>
+          <strong>${escapeHtml(resumableQuiz.test.name)}</strong>
+          <div class="muted">${resumableQuiz.currentIndex + 1}/${resumableQuiz.questions.length} savolda to‘xtagansiz</div>
+        </div>
+        <button class="button" data-action="resume-quiz">Davom etish</button>
+      </div>
+    ` : ''}
+    ${dailyChallenge ? `
+      <div class="challenge-card">
+        <div>
+          <div class="badge">Daily Challenge</div>
+          <strong>${escapeHtml(dailyChallenge.name)}</strong>
+          <div class="muted">${dailyChallenge.questionCount} ta savol • bugungi maxsus test</div>
+        </div>
+        <button class="button" data-action="start-daily-challenge" data-test-id="${dailyChallenge.id}">Boshlash</button>
+      </div>
+    ` : ''}
     <div class="section-head">
       <div>
         <div class="badge">Test Selection</div>
@@ -187,6 +241,7 @@ function renderQuizList(tests) {
       </div>
       <button class="secondary-button" data-action="refresh">Darslarni yangilash</button>
     </div>
+    <input class="input" id="testSearchInput" data-action="search-tests" placeholder="Test qidirish..." value="${escapeHtml(state.testSearch)}" />
     <div class="test-list">
       ${tests.map((test) => `
         <article class="quiz-card" data-action="start-quiz" data-test-id="${test.id}">
@@ -331,7 +386,7 @@ function renderQuizResult(result) {
 }
 
 function renderQuizSection() {
-  const tests = state.boot?.tests || [];
+  const tests = getFilteredTests();
 
   return `
     <section class="section ${state.currentQuiz ? 'runner-shell' : ''} ${state.tab === 'quiz' ? '' : 'hidden'}" id="tab-quiz">
@@ -347,6 +402,7 @@ function renderRatingSection() {
   const podium = [top[1], top[0], top[2]].filter(Boolean);
   const currentUserId = getCurrentUserId();
   const myRank = getCurrentUserLeaderboardItem();
+  const weeklyWinners = state.boot?.analytics?.weeklyWinners || state.boot?.leaderboard?.weekly?.slice(0, 3) || [];
 
   return `
     <section class="section ${state.tab === 'rating' ? '' : 'hidden'}" id="tab-rating">
@@ -361,6 +417,19 @@ function renderRatingSection() {
         <button class="${state.ratingMode === 'allTime' ? 'active' : ''}" data-action="rating-mode" data-mode="allTime">All-time</button>
         <button class="${state.ratingMode === 'weekly' ? 'active' : ''}" data-action="rating-mode" data-mode="weekly">7 kun</button>
       </div>
+      ${weeklyWinners.length ? `
+        <div class="weekly-banner">
+          <div class="badge">Weekly Winners</div>
+          <div class="weekly-winners">
+            ${weeklyWinners.map((item) => `
+              <div class="weekly-winner-pill">
+                <span>#${item.rank}</span>
+                <strong>${escapeHtml(item.displayName)}</strong>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      ` : ''}
       <div class="top-three podium">
         ${podium.map((item) => `
           <article class="leader-card ${item.rank === 1 ? 'primary podium-center' : 'podium-side'} ${item.id === currentUserId ? 'leader-self' : ''}">
@@ -427,6 +496,10 @@ function renderProfileSection(profile) {
           <div class="avatar profile-large-avatar">${avatarPreview ? `<img src="${avatarPreview}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">` : initials(profile.displayName)}</div>
           <input class="input" id="displayNameInput" value="${escapeHtml(profile.displayName)}" placeholder="Ko‘rinadigan nom" />
           <input type="file" id="avatarFileInput" accept="image/*" class="hidden-file-input" />
+          <label class="reminder-toggle">
+            <input type="checkbox" id="remindersEnabledInput" ${profile.remindersEnabled ? 'checked' : ''} />
+            <span>Eslatmalarni yoqish</span>
+          </label>
           <div class="row">
             <button class="secondary-button" data-action="pick-avatar">Avatar yuklash</button>
             <button class="button" data-action="save-profile">Saqlash</button>
@@ -442,6 +515,63 @@ function renderProfileSection(profile) {
           <article class="stat-card profile-stat"><small class="muted">All-time rank</small><strong>#${profile.allTimeRank || '-'}</strong></article>
           <article class="stat-card profile-stat"><small class="muted">Best score</small><strong>${profile.bestScore}%</strong></article>
         </div>
+      </div>
+      <div class="profile-extras">
+        <section class="extra-card">
+          <div class="badge">Streak</div>
+          <div class="extra-stat-row">
+            <div><small class="muted">Hozirgi</small><strong>${profile.streakDays} kun</strong></div>
+            <div><small class="muted">Eng yaxshi</small><strong>${profile.bestStreak} kun</strong></div>
+            <div><small class="muted">Challenge</small><strong>${profile.challengeCompletions}</strong></div>
+          </div>
+        </section>
+        <section class="extra-card">
+          <div class="badge">Achievements</div>
+          <div class="badge-grid">
+            ${profile.badges?.length ? profile.badges.map((badge) => `
+              <div class="achievement-pill">
+                <span>${badge.icon}</span>
+                <strong>${escapeHtml(badge.label)}</strong>
+              </div>
+            `).join('') : '<div class="muted">Hali badge yo‘q</div>'}
+          </div>
+        </section>
+        <section class="extra-card">
+          <div class="badge">Oxirgi natijalar</div>
+          <div class="history-list">
+            ${profile.recentResults?.length ? profile.recentResults.map((item) => `
+              <div class="history-item">
+                <strong>${escapeHtml(item.testName)}</strong>
+                <div class="muted">✅ ${item.correct} • ❌ ${item.wrong} • 📈 ${item.percent}%</div>
+              </div>
+            `).join('') : '<div class="muted">Hali natijalar yo‘q</div>'}
+          </div>
+        </section>
+        <section class="extra-card">
+          <div class="badge">Weak Words</div>
+          <div class="weak-list">
+            ${profile.weakWords?.length ? profile.weakWords.map((item) => `
+              <div class="weak-item">
+                <strong>${escapeHtml(item.arabic)}</strong>
+                <span>${escapeHtml(item.correctAnswer)}</span>
+                <small>${item.count} marta</small>
+              </div>
+            `).join('') : '<div class="muted">Weak words hali yo‘q</div>'}
+          </div>
+        </section>
+        ${state.boot?.analytics ? `
+          <section class="extra-card analytics-card">
+            <div class="badge">Admin Analytics</div>
+            <div class="analytics-grid">
+              <div><small class="muted">Bugun open</small><strong>${state.boot.analytics.opensToday}</strong></div>
+              <div><small class="muted">Bugun quiz</small><strong>${state.boot.analytics.quizzesToday}</strong></div>
+              <div><small class="muted">Jami profil</small><strong>${state.boot.analytics.totalProfiles}</strong></div>
+              <div><small class="muted">Jami urinish</small><strong>${state.boot.analytics.totalAttempts}</strong></div>
+            </div>
+            ${state.boot.analytics.topTest ? `<div class="muted">Eng ko‘p ishlatilgan test: ${escapeHtml(state.boot.analytics.topTest.name)} (${state.boot.analytics.topTest.count})</div>` : ''}
+            ${state.boot.analytics.mostActiveUser ? `<div class="muted">Eng faol user: ${escapeHtml(state.boot.analytics.mostActiveUser.displayName)} (${state.boot.analytics.mostActiveUser.count})</div>` : ''}
+          </section>
+        ` : ''}
       </div>
     </section>
   `;
@@ -481,6 +611,47 @@ function resizeImageFile(file) {
     reader.onerror = () => reject(new Error('Fayl o‘qilmadi.'));
     reader.readAsDataURL(file);
   });
+}
+
+function renderOnboarding() {
+  const profile = getProfile();
+  if (!profile || profile.hasSeenOnboarding) return '';
+
+  const slides = [
+    {
+      title: 'Quiz Arena',
+      text: 'Testlarni tanlang, natijangizni kuzating va reytingda ko‘tariling.'
+    },
+    {
+      title: 'Daily Challenge',
+      text: 'Har kuni maxsus challenge chiqadi. Uni o‘tkazib yubormang.'
+    },
+    {
+      title: 'Profile va Badges',
+      text: 'Profilni bezang, streak yig‘ing va yangi badge’larni oching.'
+    }
+  ];
+
+  const slide = slides[state.onboardingStep] || slides[0];
+
+  return `
+    <div class="onboarding-overlay">
+      <div class="onboarding-card">
+        <div class="badge">Welcome</div>
+        <h2>${slide.title}</h2>
+        <p>${slide.text}</p>
+        <div class="onboarding-dots">
+          ${slides.map((_, index) => `<span class="${index === state.onboardingStep ? 'active' : ''}"></span>`).join('')}
+        </div>
+        <div class="row">
+          ${state.onboardingStep > 0 ? '<button class="secondary-button" data-action="prev-onboarding">Orqaga</button>' : ''}
+          ${state.onboardingStep < slides.length - 1
+            ? '<button class="button" data-action="next-onboarding">Keyingi</button>'
+            : '<button class="button" data-action="finish-onboarding">Boshlash</button>'}
+        </div>
+      </div>
+    </div>
+  `;
 }
 
 function renderTabs() {
@@ -527,6 +698,7 @@ function render() {
     ${renderRatingSection()}
     ${renderProfileSection(profile)}
     ${renderTabs()}
+    ${renderOnboarding()}
   `;
 }
 
@@ -543,10 +715,11 @@ async function refreshBoot() {
   render();
 }
 
-async function startQuiz(testId) {
+async function startQuiz(testId, options = {}) {
   const data = await api('/api/mini-app/quiz/start', {
     user: getTelegramUser(),
-    testIndex: Number(testId)
+    testIndex: Number(testId),
+    isDailyChallenge: Boolean(options.isDailyChallenge)
   });
 
   state.currentQuiz = {
@@ -554,13 +727,15 @@ async function startQuiz(testId) {
     test: data.test,
     questions: data.questions,
     currentIndex: 0,
-    startedAt: Date.now()
+    startedAt: Date.now(),
+    isDailyChallenge: Boolean(options.isDailyChallenge)
   };
   state.selectedAnswers = new Array(data.questions.length).fill(null);
   state.result = null;
   state.tab = 'quiz';
   state.timerNow = Date.now();
   state.autoAdvanceLock = false;
+  state.boot.activeQuiz = null;
   startTimer();
   render();
 }
@@ -575,6 +750,8 @@ async function finishQuiz() {
   state.result = data;
   state.boot.user = data.profile;
   state.boot.leaderboard = data.leaderboard;
+  state.boot.analytics = data.analytics || state.boot.analytics;
+  state.boot.activeQuiz = null;
   state.currentQuiz = {
     ...state.currentQuiz,
     result: data
@@ -585,13 +762,25 @@ async function finishQuiz() {
 
 async function saveProfile() {
   const displayName = document.getElementById('displayNameInput')?.value || '';
-  const avatarUrl = state.profileAvatarDraft || state.boot?.user?.avatarUrl || '';
+  const remindersEnabled = Boolean(document.getElementById('remindersEnabledInput')?.checked);
+  const avatarUrl = state.profileAvatarDraft !== null
+    ? state.profileAvatarDraft
+    : (state.boot?.user?.avatarUrl || '');
   const data = await api('/api/mini-app/profile', {
     user: getTelegramUser(),
-    profile: { displayName, avatarUrl }
+    profile: { displayName, avatarUrl, remindersEnabled }
   });
   state.boot.user = data;
   state.profileAvatarDraft = null;
+  render();
+}
+
+async function markOnboardingComplete() {
+  const data = await api('/api/mini-app/profile', {
+    user: getTelegramUser(),
+    profile: { hasSeenOnboarding: true }
+  });
+  state.boot.user = data;
   render();
 }
 
@@ -616,13 +805,30 @@ function scheduleAutoAdvance() {
 
     if (isLastQuestion) {
       await finishQuiz();
+      haptic('success');
       return;
     }
 
     state.currentQuiz.currentIndex += 1;
     state.autoAdvanceLock = false;
+    void persistQuizProgress();
     render();
   }, 420);
+}
+
+async function persistQuizProgress() {
+  if (!state.currentQuiz?.quizId) return;
+  try {
+    const data = await api('/api/mini-app/quiz/progress', {
+      user: getTelegramUser(),
+      quizId: state.currentQuiz.quizId,
+      answers: state.selectedAnswers,
+      currentIndex: state.currentQuiz.currentIndex
+    });
+    state.boot.activeQuiz = data;
+  } catch (_) {
+    // ignore lightweight autosave failures
+  }
 }
 
 document.addEventListener('click', async (event) => {
@@ -632,6 +838,7 @@ document.addEventListener('click', async (event) => {
   const action = trigger.dataset.action;
 
   if (action === 'toggle-theme') {
+    haptic('impact');
     setTheme(state.theme === 'dark' ? 'light' : 'dark');
     render();
     return;
@@ -639,35 +846,60 @@ document.addEventListener('click', async (event) => {
 
   if (action === 'tab') {
     if (state.currentQuiz && trigger.dataset.tab !== 'quiz') return;
+    haptic('selection');
     state.tab = trigger.dataset.tab;
     render();
     return;
   }
 
   if (action === 'rating-mode') {
+    haptic('selection');
     state.ratingMode = trigger.dataset.mode;
     render();
     return;
   }
 
   if (action === 'refresh') {
+    haptic('impact');
     await refreshBoot();
     return;
   }
 
   if (action === 'start-quiz') {
+    haptic('impact');
     await startQuiz(trigger.dataset.testId);
     return;
   }
 
+  if (action === 'start-daily-challenge') {
+    haptic('impact');
+    await startQuiz(trigger.dataset.testId, { isDailyChallenge: true });
+    return;
+  }
+
+  if (action === 'resume-quiz') {
+    haptic('impact');
+    state.currentQuiz = state.boot.activeQuiz;
+    state.selectedAnswers = Array.isArray(state.currentQuiz.answers)
+      ? state.currentQuiz.answers
+      : new Array(state.currentQuiz.questions.length).fill(null);
+    state.timerNow = Date.now();
+    startTimer();
+    render();
+    return;
+  }
+
   if (action === 'leave-quiz') {
+    void persistQuizProgress();
     leaveQuiz();
     return;
   }
 
   if (action === 'choose-answer') {
     if (state.autoAdvanceLock) return;
+    haptic('selection');
     state.selectedAnswers[state.currentQuiz.currentIndex] = Number(trigger.dataset.optionIndex);
+    void persistQuizProgress();
     render();
     scheduleAutoAdvance();
     return;
@@ -687,11 +919,13 @@ document.addEventListener('click', async (event) => {
   }
 
   if (action === 'restart-test') {
+    haptic('impact');
     await startQuiz(trigger.dataset.testId);
     return;
   }
 
   if (action === 'finish-quiz') {
+    haptic('success');
     await finishQuiz();
     return;
   }
@@ -712,6 +946,23 @@ document.addEventListener('click', async (event) => {
       state.boot.user.avatarUrl = '';
     }
     render();
+    return;
+  }
+
+  if (action === 'next-onboarding') {
+    state.onboardingStep += 1;
+    render();
+    return;
+  }
+
+  if (action === 'prev-onboarding') {
+    state.onboardingStep = Math.max(0, state.onboardingStep - 1);
+    render();
+    return;
+  }
+
+  if (action === 'finish-onboarding') {
+    await markOnboardingComplete();
   }
 });
 
@@ -722,6 +973,15 @@ document.addEventListener('change', async (event) => {
   const [file] = Array.from(target.files || []);
   if (!file) return;
   state.profileAvatarDraft = await resizeImageFile(file);
+  haptic('impact');
+  render();
+});
+
+document.addEventListener('input', (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLInputElement)) return;
+  if (target.dataset.action !== 'search-tests') return;
+  state.testSearch = target.value;
   render();
 });
 

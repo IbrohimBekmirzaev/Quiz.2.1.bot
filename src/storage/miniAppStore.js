@@ -4,10 +4,27 @@ const crypto = require('crypto');
 
 const dataDir = path.join(__dirname, '..', '..', 'data');
 const storeFilePath = path.join(dataDir, 'mini-app-store.json');
-const STORE_VERSION = 1;
+const STORE_VERSION = 2;
 
 function ensureDataDir() {
   fs.mkdirSync(dataDir, { recursive: true });
+}
+
+function dayKey(date = new Date()) {
+  return new Date(date).toISOString().slice(0, 10);
+}
+
+function daysBetween(a, b) {
+  const first = Date.parse(`${a}T00:00:00.000Z`);
+  const second = Date.parse(`${b}T00:00:00.000Z`);
+  return Math.round((second - first) / 86400000);
+}
+
+function isWithinLastDays(dateValue, days) {
+  if (!dateValue) return false;
+  const now = new Date();
+  const from = new Date(now.getTime() - days * 86400000);
+  return new Date(dateValue) >= from;
 }
 
 function createEmptyStore() {
@@ -15,7 +32,8 @@ function createEmptyStore() {
     version: STORE_VERSION,
     profiles: {},
     attempts: [],
-    activeQuizzes: {}
+    activeQuizzes: {},
+    duels: {}
   };
 }
 
@@ -25,7 +43,8 @@ function normalizeStore(store) {
     version: Number(store?.version || STORE_VERSION),
     profiles: store?.profiles || base.profiles,
     attempts: Array.isArray(store?.attempts) ? store.attempts : [],
-    activeQuizzes: store?.activeQuizzes || base.activeQuizzes
+    activeQuizzes: store?.activeQuizzes || base.activeQuizzes,
+    duels: store?.duels || base.duels
   };
 }
 
@@ -53,21 +72,50 @@ function getUserId(user) {
   return String(user?.id || '');
 }
 
-function upsertProfile(user, extra = {}) {
-  const store = readStore();
+function createBaseProfile(user = {}) {
+  const displayName = [user?.first_name || '', user?.last_name || ''].join(' ').trim() || 'Foydalanuvchi';
+  return {
+    id: getUserId(user),
+    firstName: user?.first_name || 'Foydalanuvchi',
+    lastName: user?.last_name || '',
+    username: user?.username || '',
+    displayName,
+    avatarUrl: '',
+    opens: 0,
+    quizAttempts: 0,
+    totalCorrect: 0,
+    totalWrong: 0,
+    bestScore: 0,
+    points: 0,
+    weeklyPoints: 0,
+    streakDays: 0,
+    bestStreak: 0,
+    challengeCompletions: 0,
+    remindersEnabled: false,
+    hasSeenOnboarding: false,
+    lastOpenedAt: '',
+    lastOpenDay: '',
+    createdAt: new Date().toISOString()
+  };
+}
+
+function getProfileFromStore(store, user, extra = {}) {
   const userId = getUserId(user);
   if (!userId) {
     throw new Error('Foydalanuvchi topilmadi.');
   }
 
-  const existing = store.profiles[userId] || {};
-  const profile = {
+  const existing = store.profiles[userId] || createBaseProfile(user);
+  return {
+    ...existing,
     id: userId,
     firstName: user?.first_name || existing.firstName || 'Foydalanuvchi',
     lastName: user?.last_name || existing.lastName || '',
     username: user?.username || existing.username || '',
     displayName: extra.displayName || existing.displayName || [user?.first_name || '', user?.last_name || ''].join(' ').trim() || 'Foydalanuvchi',
-    avatarUrl: extra.avatarUrl || existing.avatarUrl || '',
+    avatarUrl: Object.prototype.hasOwnProperty.call(extra, 'avatarUrl')
+      ? String(extra.avatarUrl || '').trim()
+      : (existing.avatarUrl || ''),
     opens: Number(existing.opens || 0),
     quizAttempts: Number(existing.quizAttempts || 0),
     totalCorrect: Number(existing.totalCorrect || 0),
@@ -75,79 +123,220 @@ function upsertProfile(user, extra = {}) {
     bestScore: Number(existing.bestScore || 0),
     points: Number(existing.points || 0),
     weeklyPoints: Number(existing.weeklyPoints || 0),
+    streakDays: Number(existing.streakDays || 0),
+    bestStreak: Number(existing.bestStreak || 0),
+    challengeCompletions: Number(existing.challengeCompletions || 0),
+    remindersEnabled: Boolean(existing.remindersEnabled),
+    hasSeenOnboarding: Boolean(existing.hasSeenOnboarding),
     lastOpenedAt: existing.lastOpenedAt || '',
+    lastOpenDay: existing.lastOpenDay || '',
     createdAt: existing.createdAt || new Date().toISOString()
   };
+}
 
-  store.profiles[userId] = profile;
+function buildProfileSummary(store, profileId) {
+  const attempts = store.attempts.filter((attempt) => String(attempt.userId) === String(profileId));
+  const recentAttempts = attempts.slice(-5).reverse();
+  const totalCorrect = attempts.reduce((sum, attempt) => sum + Number(attempt.correct || 0), 0);
+  const totalWrong = attempts.reduce((sum, attempt) => sum + Number(attempt.wrong || 0), 0);
+  const points = attempts.reduce((sum, attempt) => sum + Number(attempt.correct || 0), 0);
+  const weeklyPoints = attempts
+    .filter((attempt) => isWithinLastDays(attempt.createdAt, 7))
+    .reduce((sum, attempt) => sum + Number(attempt.correct || 0), 0);
+  const bestScore = attempts.reduce((max, attempt) => Math.max(max, Number(attempt.percent || 0)), 0);
+
+  const weakMap = new Map();
+  for (const attempt of attempts) {
+    for (const mistake of attempt.mistakes || []) {
+      const key = `${mistake.arabic}__${mistake.correctAnswer}`;
+      const current = weakMap.get(key) || {
+        arabic: mistake.arabic,
+        correctAnswer: mistake.correctAnswer,
+        count: 0
+      };
+      current.count += 1;
+      weakMap.set(key, current);
+    }
+  }
+
+  const weakWords = [...weakMap.values()]
+    .sort((a, b) => b.count - a.count || a.arabic.localeCompare(b.arabic))
+    .slice(0, 6);
+
+  return {
+    attempts,
+    recentAttempts,
+    totalCorrect,
+    totalWrong,
+    points,
+    weeklyPoints,
+    bestScore,
+    weakWords
+  };
+}
+
+function computeLeaderboard(store) {
+  const profiles = Object.values(store.profiles);
+  const scored = profiles.map((profile) => {
+    const summary = buildProfileSummary(store, profile.id);
+    return {
+      profile,
+      points: summary.points,
+      weeklyPoints: summary.weeklyPoints,
+      totalCorrect: summary.totalCorrect,
+      totalWrong: summary.totalWrong,
+      attempts: summary.attempts.length
+    };
+  });
+
+  const allTime = scored
+    .slice()
+    .sort((a, b) => b.points - a.points || b.totalCorrect - a.totalCorrect || a.profile.displayName.localeCompare(b.profile.displayName))
+    .map((item, index) => ({
+      rank: index + 1,
+      id: item.profile.id,
+      displayName: item.profile.displayName || item.profile.firstName || 'Foydalanuvchi',
+      username: item.profile.username ? `@${item.profile.username}` : '@no_username',
+      avatarUrl: item.profile.avatarUrl || '',
+      points: item.points,
+      totalCorrect: item.totalCorrect,
+      totalWrong: item.totalWrong,
+      attempts: item.attempts
+    }));
+
+  const weekly = scored
+    .slice()
+    .sort((a, b) => b.weeklyPoints - a.weeklyPoints || b.totalCorrect - a.totalCorrect || a.profile.displayName.localeCompare(b.profile.displayName))
+    .map((item, index) => ({
+      rank: index + 1,
+      id: item.profile.id,
+      displayName: item.profile.displayName || item.profile.firstName || 'Foydalanuvchi',
+      username: item.profile.username ? `@${item.profile.username}` : '@no_username',
+      avatarUrl: item.profile.avatarUrl || '',
+      points: item.weeklyPoints,
+      totalCorrect: item.totalCorrect,
+      totalWrong: item.totalWrong,
+      attempts: item.attempts
+    }));
+
+  return { allTime, weekly };
+}
+
+function computeBadges(profile, attempts, leaderboard) {
+  const badges = [];
+
+  if (attempts.length >= 1) badges.push({ id: 'first_quiz', label: 'First Quiz', icon: '🚀' });
+  if (attempts.length >= 10) badges.push({ id: 'ten_quizzes', label: '10 ta test', icon: '🏁' });
+  if (attempts.some((attempt) => Number(attempt.percent || 0) === 100)) badges.push({ id: 'perfect', label: '100% Master', icon: '💯' });
+  if (Number(profile.streakDays || 0) >= 7) badges.push({ id: 'streak_7', label: '7 kun streak', icon: '🔥' });
+  if (Number(profile.challengeCompletions || 0) >= 5) badges.push({ id: 'challenge_5', label: '5 challenge', icon: '🎯' });
+
+  const weeklyRank = leaderboard.weekly.find((item) => item.id === profile.id)?.rank || null;
+  if (weeklyRank && weeklyRank <= 3) badges.push({ id: 'weekly_top3', label: 'Weekly Top 3', icon: '🏆' });
+
+  return badges;
+}
+
+function upsertProfile(user, extra = {}) {
+  const store = readStore();
+  const profile = getProfileFromStore(store, user, extra);
+  store.profiles[profile.id] = profile;
   writeStore(store);
   return profile;
 }
 
 function registerMiniAppOpen(user) {
   const store = readStore();
-  const userId = getUserId(user);
-  if (!userId) {
-    throw new Error('Foydalanuvchi topilmadi.');
+  const today = dayKey();
+  const profile = getProfileFromStore(store, user);
+
+  if (profile.lastOpenDay !== today) {
+    if (!profile.lastOpenDay) {
+      profile.streakDays = 1;
+    } else {
+      const gap = daysBetween(profile.lastOpenDay, today);
+      profile.streakDays = gap === 1 ? profile.streakDays + 1 : 1;
+    }
+    profile.bestStreak = Math.max(profile.bestStreak, profile.streakDays);
+    profile.lastOpenDay = today;
   }
 
-  const existing = store.profiles[userId] || upsertProfile(user);
-  const profile = {
-    ...existing,
-    firstName: user?.first_name || existing.firstName || 'Foydalanuvchi',
-    lastName: user?.last_name || existing.lastName || '',
-    username: user?.username || existing.username || '',
-    displayName: existing.displayName || [user?.first_name || '', user?.last_name || ''].join(' ').trim() || 'Foydalanuvchi',
-    opens: Number(existing.opens || 0) + 1,
-    lastOpenedAt: new Date().toISOString()
-  };
-
-  store.profiles[userId] = profile;
+  profile.opens += 1;
+  profile.lastOpenedAt = new Date().toISOString();
+  store.profiles[profile.id] = profile;
   writeStore(store);
   return profile;
 }
 
 function saveProfileSettings(user, payload = {}) {
   const store = readStore();
-  const userId = getUserId(user);
-  if (!userId) {
-    throw new Error('Foydalanuvchi topilmadi.');
+  const profile = getProfileFromStore(store, user, {
+    displayName: String(payload.displayName || '').trim() || undefined,
+    avatarUrl: Object.prototype.hasOwnProperty.call(payload, 'avatarUrl') ? payload.avatarUrl : undefined
+  });
+
+  if (Object.prototype.hasOwnProperty.call(payload, 'remindersEnabled')) {
+    profile.remindersEnabled = Boolean(payload.remindersEnabled);
   }
 
-  const existing = store.profiles[userId] || upsertProfile(user);
-  const profile = {
-    ...existing,
-    displayName: String(payload.displayName || existing.displayName || '').trim() || existing.displayName || 'Foydalanuvchi',
-    avatarUrl: String(payload.avatarUrl || existing.avatarUrl || '').trim()
-  };
+  if (Object.prototype.hasOwnProperty.call(payload, 'hasSeenOnboarding')) {
+    profile.hasSeenOnboarding = Boolean(payload.hasSeenOnboarding);
+  }
 
-  store.profiles[userId] = profile;
+  store.profiles[profile.id] = profile;
   writeStore(store);
   return profile;
 }
 
-function createQuizSession(user, test, questions) {
+function createQuizSession(user, test, questions, extra = {}) {
   const store = readStore();
   const userId = getUserId(user);
-  if (!userId) {
-    throw new Error('Foydalanuvchi topilmadi.');
-  }
+  if (!userId) throw new Error('Foydalanuvchi topilmadi.');
 
   const quizId = crypto.randomUUID();
   store.activeQuizzes[quizId] = {
+    quizId,
     userId,
     testIndex: test.id,
     testName: test.name,
     createdAt: new Date().toISOString(),
-    questions
+    startedAt: new Date().toISOString(),
+    currentIndex: Number(extra.currentIndex || 0),
+    answers: Array.isArray(extra.answers) ? extra.answers : new Array(questions.length).fill(null),
+    questions,
+    isDailyChallenge: Boolean(extra.isDailyChallenge)
   };
   writeStore(store);
   return quizId;
 }
 
+function updateQuizSessionProgress(quizId, userId, payload = {}) {
+  const store = readStore();
+  const session = store.activeQuizzes[String(quizId)];
+  if (!session) return null;
+  if (String(session.userId) !== String(userId)) return null;
+
+  if (Array.isArray(payload.answers)) {
+    session.answers = payload.answers;
+  }
+  if (typeof payload.currentIndex === 'number') {
+    session.currentIndex = payload.currentIndex;
+  }
+  store.activeQuizzes[String(quizId)] = session;
+  writeStore(store);
+  return session;
+}
+
 function getQuizSession(quizId) {
   const store = readStore();
   return store.activeQuizzes[String(quizId)] || null;
+}
+
+function getActiveQuizForUser(userId) {
+  const store = readStore();
+  return Object.values(store.activeQuizzes)
+    .filter((session) => String(session.userId) === String(userId))
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0] || null;
 }
 
 function finishQuizSession(quizId) {
@@ -158,86 +347,55 @@ function finishQuizSession(quizId) {
 
 function recordQuizAttempt(user, summary) {
   const store = readStore();
-  const userId = getUserId(user);
-  if (!userId) {
-    throw new Error('Foydalanuvchi topilmadi.');
-  }
-
-  const existing = store.profiles[userId] || upsertProfile(user);
+  const profile = getProfileFromStore(store, user);
   const percent = Number(summary.percent || 0);
   const points = Number(summary.correct || 0);
   const attempt = {
     id: crypto.randomUUID(),
-    userId,
+    userId: profile.id,
     testIndex: summary.testIndex,
     testName: summary.testName,
     correct: Number(summary.correct || 0),
     wrong: Number(summary.wrong || 0),
     percent,
     createdAt: new Date().toISOString(),
-    source: 'mini_app'
+    source: 'mini_app',
+    mistakes: Array.isArray(summary.mistakes) ? summary.mistakes : [],
+    durationSeconds: Number(summary.durationSeconds || 0),
+    isDailyChallenge: Boolean(summary.isDailyChallenge)
   };
 
   store.attempts.push(attempt);
-  store.profiles[userId] = {
-    ...existing,
-    firstName: user?.first_name || existing.firstName || 'Foydalanuvchi',
-    lastName: user?.last_name || existing.lastName || '',
-    username: user?.username || existing.username || '',
-    displayName: existing.displayName || [user?.first_name || '', user?.last_name || ''].join(' ').trim() || 'Foydalanuvchi',
-    quizAttempts: Number(existing.quizAttempts || 0) + 1,
-    totalCorrect: Number(existing.totalCorrect || 0) + Number(summary.correct || 0),
-    totalWrong: Number(existing.totalWrong || 0) + Number(summary.wrong || 0),
-    bestScore: Math.max(Number(existing.bestScore || 0), percent),
-    points: Number(existing.points || 0) + points,
-    weeklyPoints: Number(existing.weeklyPoints || 0) + points
-  };
+  profile.quizAttempts += 1;
+  profile.totalCorrect += Number(summary.correct || 0);
+  profile.totalWrong += Number(summary.wrong || 0);
+  profile.bestScore = Math.max(profile.bestScore, percent);
+  profile.points += points;
+  if (attempt.isDailyChallenge) {
+    profile.challengeCompletions += 1;
+  }
 
+  store.profiles[profile.id] = profile;
   writeStore(store);
   return attempt;
 }
 
 function getLeaderboard() {
   const store = readStore();
-  const profiles = Object.values(store.profiles);
-  const allTime = profiles
-    .slice()
-    .sort((a, b) => Number(b.points || 0) - Number(a.points || 0) || Number(b.totalCorrect || 0) - Number(a.totalCorrect || 0))
-    .map((profile, index) => ({
-      rank: index + 1,
-      id: profile.id,
-      displayName: profile.displayName || profile.firstName || 'Foydalanuvchi',
-      username: profile.username ? `@${profile.username}` : '@no_username',
-      avatarUrl: profile.avatarUrl || '',
-      points: Number(profile.points || 0),
-      totalCorrect: Number(profile.totalCorrect || 0),
-      totalWrong: Number(profile.totalWrong || 0),
-      attempts: Number(profile.quizAttempts || 0)
-    }));
-
-  const weekly = profiles
-    .slice()
-    .sort((a, b) => Number(b.weeklyPoints || 0) - Number(a.weeklyPoints || 0) || Number(b.totalCorrect || 0) - Number(a.totalCorrect || 0))
-    .map((profile, index) => ({
-      rank: index + 1,
-      id: profile.id,
-      displayName: profile.displayName || profile.firstName || 'Foydalanuvchi',
-      username: profile.username ? `@${profile.username}` : '@no_username',
-      avatarUrl: profile.avatarUrl || '',
-      points: Number(profile.weeklyPoints || 0),
-      totalCorrect: Number(profile.totalCorrect || 0),
-      totalWrong: Number(profile.totalWrong || 0),
-      attempts: Number(profile.quizAttempts || 0)
-    }));
-
-  return { allTime, weekly };
+  return computeLeaderboard(store);
 }
 
 function getProfileView(user) {
-  const profile = upsertProfile(user);
-  const board = getLeaderboard();
-  const allTimeRank = board.allTime.find((item) => item.id === profile.id)?.rank || null;
-  const weeklyRank = board.weekly.find((item) => item.id === profile.id)?.rank || null;
+  const store = readStore();
+  const profile = getProfileFromStore(store, user);
+  store.profiles[profile.id] = profile;
+  writeStore(store);
+
+  const leaderboard = computeLeaderboard(store);
+  const summary = buildProfileSummary(store, profile.id);
+  const badges = computeBadges(profile, summary.attempts, leaderboard);
+  const allTimeRank = leaderboard.allTime.find((item) => item.id === profile.id)?.rank || null;
+  const weeklyRank = leaderboard.weekly.find((item) => item.id === profile.id)?.rank || null;
 
   return {
     id: profile.id,
@@ -245,14 +403,69 @@ function getProfileView(user) {
     username: profile.username ? `@${profile.username}` : '@no_username',
     avatarUrl: profile.avatarUrl || '',
     opens: Number(profile.opens || 0),
-    attempts: Number(profile.quizAttempts || 0),
-    totalCorrect: Number(profile.totalCorrect || 0),
-    totalWrong: Number(profile.totalWrong || 0),
-    points: Number(profile.points || 0),
-    weeklyPoints: Number(profile.weeklyPoints || 0),
-    bestScore: Number(profile.bestScore || 0),
+    attempts: summary.attempts.length,
+    totalCorrect: summary.totalCorrect,
+    totalWrong: summary.totalWrong,
+    points: summary.points,
+    weeklyPoints: summary.weeklyPoints,
+    bestScore: summary.bestScore,
     allTimeRank,
-    weeklyRank
+    weeklyRank,
+    streakDays: Number(profile.streakDays || 0),
+    bestStreak: Number(profile.bestStreak || 0),
+    challengeCompletions: Number(profile.challengeCompletions || 0),
+    remindersEnabled: Boolean(profile.remindersEnabled),
+    hasSeenOnboarding: Boolean(profile.hasSeenOnboarding),
+    recentResults: summary.recentAttempts.map((attempt) => ({
+      id: attempt.id,
+      testName: attempt.testName,
+      correct: attempt.correct,
+      wrong: attempt.wrong,
+      percent: attempt.percent,
+      createdAt: attempt.createdAt
+    })),
+    weakWords: summary.weakWords,
+    badges
+  };
+}
+
+function getMiniAppAnalytics() {
+  const store = readStore();
+  const today = dayKey();
+  const profiles = Object.values(store.profiles);
+  const attempts = store.attempts;
+  const todayAttempts = attempts.filter((attempt) => dayKey(attempt.createdAt) === today);
+  const opensToday = profiles.filter((profile) => dayKey(profile.lastOpenedAt || profile.createdAt) === today).length;
+
+  const testUsage = new Map();
+  for (const attempt of attempts) {
+    testUsage.set(attempt.testName, (testUsage.get(attempt.testName) || 0) + 1);
+  }
+  const topTest = [...testUsage.entries()].sort((a, b) => b[1] - a[1])[0] || null;
+
+  const userActivity = new Map();
+  for (const attempt of attempts) {
+    userActivity.set(attempt.userId, (userActivity.get(attempt.userId) || 0) + 1);
+  }
+  const topUserEntry = [...userActivity.entries()].sort((a, b) => b[1] - a[1])[0] || null;
+  const topUserProfile = topUserEntry ? store.profiles[topUserEntry[0]] : null;
+
+  const leaderboard = computeLeaderboard(store);
+
+  return {
+    opensToday,
+    quizzesToday: todayAttempts.length,
+    totalProfiles: profiles.length,
+    totalAttempts: attempts.length,
+    topTest: topTest ? { name: topTest[0], count: topTest[1] } : null,
+    mostActiveUser: topUserProfile
+      ? {
+          id: topUserProfile.id,
+          displayName: topUserProfile.displayName,
+          count: topUserEntry[1]
+        }
+      : null,
+    weeklyWinners: leaderboard.weekly.slice(0, 3)
   };
 }
 
@@ -261,11 +474,15 @@ module.exports = {
   registerMiniAppOpen,
   saveProfileSettings,
   createQuizSession,
+  updateQuizSessionProgress,
   getQuizSession,
+  getActiveQuizForUser,
   finishQuizSession,
   recordQuizAttempt,
   getLeaderboard,
   getProfileView,
+  getMiniAppAnalytics,
   upsertProfile,
-  storeFilePath
+  storeFilePath,
+  dayKey
 };
