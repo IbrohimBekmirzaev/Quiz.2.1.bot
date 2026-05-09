@@ -20,6 +20,7 @@ const bot = new TelegramBot(config.botToken, { polling: true });
 let pollingRestartTimer = null;
 let restartingPolling = false;
 let healthServer = null;
+let lastPollingConflictAt = 0;
 const publicDir = path.join(__dirname, '..', 'public', 'mini-app');
 
 function isPollingConflict(error) {
@@ -27,7 +28,22 @@ function isPollingConflict(error) {
   return message.includes('terminated by other getupdates request') || message.includes('409 conflict');
 }
 
+function shouldSkipConflictLog(error) {
+  if (!isPollingConflict(error)) return false;
+  const now = Date.now();
+  if (now - lastPollingConflictAt < 60_000) {
+    return true;
+  }
+  lastPollingConflictAt = now;
+  return false;
+}
+
 async function safeLogError(error, context) {
+  if (shouldSkipConflictLog(error)) {
+    console.warn('Polling conflict takrorlandi, log spam o‘tkazib yuborildi.');
+    return;
+  }
+
   try {
     await logError(bot, error, context);
   } catch (loggingError) {
@@ -262,12 +278,14 @@ bot.on('poll_answer', async (answer) => {
 });
 
 bot.on('polling_error', async (error) => {
-  await safeLogError(error, { place: 'polling_error' });
-
   if (isPollingConflict(error)) {
     console.warn('Polling conflict aniqlandi. 5 soniyadan keyin qayta uriniladi.');
+    await safeLogError(error, { place: 'polling_error' });
     await restartPolling();
+    return;
   }
+
+  await safeLogError(error, { place: 'polling_error' });
 });
 
 process.on('unhandledRejection', async (error) => {
