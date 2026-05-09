@@ -218,6 +218,7 @@ body {
 
 .quiz-card {
   padding: 16px;
+  cursor: pointer;
 }
 
 .quiz-card.active {
@@ -230,6 +231,22 @@ body {
   grid-template-columns: 58px 1fr auto;
   gap: 14px;
   align-items: center;
+}
+
+.quiz-start-button {
+  min-width: 128px;
+  border: 1px solid rgba(111, 224, 209, 0.28);
+  border-radius: 18px;
+  padding: 14px 18px;
+  background: linear-gradient(135deg, rgba(69, 185, 255, 0.18), rgba(88, 106, 255, 0.22));
+  color: var(--text);
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.quiz-start-button:hover {
+  border-color: rgba(111, 224, 209, 0.68);
 }
 
 .test-index {
@@ -633,6 +650,9 @@ html[data-theme="light"] .tabs {
   .profile-row,
   .summary-row,
   .quiz-row { grid-template-columns: 1fr; }
+  .quiz-start-button {
+    width: 100%;
+  }
   .runner-topbar,
   .runner-top-actions,
   .runner-metrics,

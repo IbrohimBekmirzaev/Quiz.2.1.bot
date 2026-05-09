@@ -13,7 +13,8 @@ const state = {
   currentQuiz: null,
   selectedAnswers: [],
   result: null,
-  timerNow: Date.now()
+  timerNow: Date.now(),
+  autoAdvanceLock: false
 };
 
 let timerHandle = null;
@@ -78,6 +79,13 @@ function getLeaderboardItems() {
   return state.ratingMode === 'weekly'
     ? state.boot.leaderboard.weekly
     : state.boot.leaderboard.allTime;
+}
+
+function getNextTestId(currentTestIndex) {
+  const tests = state.boot?.tests || [];
+  const currentIndex = tests.findIndex((test) => test.id === Number(currentTestIndex));
+  if (currentIndex === -1) return null;
+  return tests[currentIndex + 1]?.id || null;
 }
 
 function formatTime(seconds) {
@@ -171,14 +179,14 @@ function renderQuizList(tests) {
     </div>
     <div class="test-list">
       ${tests.map((test) => `
-        <article class="quiz-card">
+        <article class="quiz-card" data-action="start-quiz" data-test-id="${test.id}">
           <div class="quiz-row">
             <div class="test-index">${String(test.id).padStart(2, '0')}</div>
             <div>
               <strong>${escapeHtml(test.name)}</strong>
               <div class="muted">${test.questionCount} ta savol bazasi</div>
-              <div class="quiz-link" data-action="start-quiz" data-test-id="${test.id}">Boshlash</div>
             </div>
+            <button class="quiz-start-button" data-action="start-quiz" data-test-id="${test.id}">Boshlash</button>
           </div>
         </article>
       `).join('')}
@@ -252,15 +260,14 @@ function renderActiveQuiz() {
 
       <div class="runner-nav">
         <button class="runner-muted" data-action="prev-question" ${active.currentIndex === 0 ? 'disabled' : ''}>Oldingi</button>
-        ${!isLastQuestion
-          ? `<button class="runner-primary" data-action="next-question" ${selectedIndex === null || selectedIndex === undefined ? 'disabled' : ''}>Keyingi</button>`
-          : `<button class="runner-primary" data-action="finish-quiz" ${selectedIndex === null || selectedIndex === undefined ? 'disabled' : ''}>Yakunlash</button>`}
+        <button class="runner-primary" disabled>${isLastQuestion ? 'Yakunlanadi...' : 'Avto keyingi...'}</button>
       </div>
     </section>
   `;
 }
 
 function renderQuizResult(result) {
+  const nextTestId = getNextTestId(result.testIndex);
   return `
     <div class="result-panel">
       <div class="badge">Natija</div>
@@ -268,6 +275,10 @@ function renderQuizResult(result) {
       <div style="margin-top: 12px">✅ To‘g‘ri: ${result.correct}</div>
       <div>❌ Xato: ${result.wrong}</div>
       <div>📈 Foiz: ${result.percent}%</div>
+      <div class="row" style="margin-top:14px">
+        <button class="secondary-button" data-action="restart-test" data-test-id="${result.testIndex}">Qayta</button>
+        ${nextTestId ? `<button class="button" data-action="start-quiz" data-test-id="${nextTestId}">Keyingi test</button>` : ''}
+      </div>
     </div>
   `;
 }
@@ -429,6 +440,7 @@ async function startQuiz(testId) {
   state.result = null;
   state.tab = 'quiz';
   state.timerNow = Date.now();
+  state.autoAdvanceLock = false;
   startTimer();
   render();
 }
@@ -445,6 +457,7 @@ async function finishQuiz() {
   state.boot.leaderboard = data.leaderboard;
   state.currentQuiz = null;
   state.selectedAnswers = [];
+  state.autoAdvanceLock = false;
   render();
 }
 
@@ -463,7 +476,30 @@ function leaveQuiz() {
   stopTimer();
   state.currentQuiz = null;
   state.selectedAnswers = [];
+  state.autoAdvanceLock = false;
   render();
+}
+
+function scheduleAutoAdvance() {
+  if (!state.currentQuiz || state.autoAdvanceLock) return;
+  state.autoAdvanceLock = true;
+  const isLastQuestion = state.currentQuiz.currentIndex + 1 === state.currentQuiz.questions.length;
+
+  window.setTimeout(async () => {
+    if (!state.currentQuiz) {
+      state.autoAdvanceLock = false;
+      return;
+    }
+
+    if (isLastQuestion) {
+      await finishQuiz();
+      return;
+    }
+
+    state.currentQuiz.currentIndex += 1;
+    state.autoAdvanceLock = false;
+    render();
+  }, 420);
 }
 
 document.addEventListener('click', async (event) => {
@@ -507,8 +543,10 @@ document.addEventListener('click', async (event) => {
   }
 
   if (action === 'choose-answer') {
+    if (state.autoAdvanceLock) return;
     state.selectedAnswers[state.currentQuiz.currentIndex] = Number(trigger.dataset.optionIndex);
     render();
+    scheduleAutoAdvance();
     return;
   }
 
@@ -522,6 +560,11 @@ document.addEventListener('click', async (event) => {
     if (state.selectedAnswers[state.currentQuiz.currentIndex] === null) return;
     state.currentQuiz.currentIndex = Math.min(state.currentQuiz.questions.length - 1, state.currentQuiz.currentIndex + 1);
     render();
+    return;
+  }
+
+  if (action === 'restart-test') {
+    await startQuiz(trigger.dataset.testId);
     return;
   }
 
