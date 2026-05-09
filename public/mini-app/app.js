@@ -86,6 +86,11 @@ function getLeaderboardItems() {
     : state.boot.leaderboard.allTime;
 }
 
+function getCurrentUserLeaderboardItem() {
+  const currentUserId = getCurrentUserId();
+  return getLeaderboardItems().find((item) => item.id === currentUserId) || null;
+}
+
 function getNextTestId(currentTestIndex) {
   const tests = state.boot?.tests || [];
   const currentIndex = tests.findIndex((test) => test.id === Number(currentTestIndex));
@@ -219,11 +224,22 @@ function renderActiveQuiz() {
           <h2 class="runner-title">${escapeHtml(active.result.testName)}</h2>
         </div>
 
-        <div class="result-panel runner-result">
-          <div style="margin-top: 4px">✅ To‘g‘ri: ${active.result.correct}</div>
-          <div>❌ Xato: ${active.result.wrong}</div>
-          <div>📈 Foiz: ${active.result.percent}%</div>
-          <div class="row" style="margin-top:14px">
+        <div class="result-panel runner-result premium-result">
+          <div class="premium-result-grid">
+            <article class="premium-result-stat success">
+              <small>To‘g‘ri</small>
+              <strong>${active.result.correct}</strong>
+            </article>
+            <article class="premium-result-stat danger">
+              <small>Xato</small>
+              <strong>${active.result.wrong}</strong>
+            </article>
+            <article class="premium-result-stat highlight">
+              <small>Foiz</small>
+              <strong>${active.result.percent}%</strong>
+            </article>
+          </div>
+          <div class="row premium-result-actions">
             <button class="secondary-button" data-action="restart-test" data-test-id="${active.test.id}">Qayta</button>
             ${nextTestId ? `<button class="button" data-action="start-quiz" data-test-id="${nextTestId}">Keyingi test</button>` : ''}
           </div>
@@ -330,6 +346,7 @@ function renderRatingSection() {
   const rest = items.slice(3, 20);
   const podium = [top[1], top[0], top[2]].filter(Boolean);
   const currentUserId = getCurrentUserId();
+  const myRank = getCurrentUserLeaderboardItem();
 
   return `
     <section class="section ${state.tab === 'rating' ? '' : 'hidden'}" id="tab-rating">
@@ -354,6 +371,16 @@ function renderRatingSection() {
           </article>
         `).join('')}
       </div>
+      ${myRank ? `
+        <div class="my-rank-card leader-self">
+          <div class="my-rank-copy">
+            <div class="badge">Mening o‘rnim</div>
+            <strong>#${myRank.rank} ${escapeHtml(myRank.displayName)}</strong>
+            <div class="muted">${myRank.points} ball • To‘g‘ri ${myRank.totalCorrect} • Xato ${myRank.totalWrong}</div>
+          </div>
+          <div class="avatar my-rank-avatar">${myRank.avatarUrl ? `<img src="${myRank.avatarUrl}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">` : initials(myRank.displayName)}</div>
+        </div>
+      ` : ''}
       <div class="leader-list">
         ${rest.map((item) => `
           <div class="leader-list-item ${item.id === currentUserId ? 'leader-self' : ''}">
@@ -403,6 +430,7 @@ function renderProfileSection(profile) {
           <div class="row">
             <button class="secondary-button" data-action="pick-avatar">Avatar yuklash</button>
             <button class="button" data-action="save-profile">Saqlash</button>
+            ${avatarPreview ? '<button class="secondary-button" data-action="remove-avatar">Avatarni olib tashlash</button>' : ''}
           </div>
           <div class="profile-helper">PNG yoki JPG rasm tanlashingiz mumkin.</div>
         </div>
@@ -675,6 +703,15 @@ document.addEventListener('click', async (event) => {
 
   if (action === 'pick-avatar') {
     document.getElementById('avatarFileInput')?.click();
+    return;
+  }
+
+  if (action === 'remove-avatar') {
+    state.profileAvatarDraft = '';
+    if (state.boot?.user) {
+      state.boot.user.avatarUrl = '';
+    }
+    render();
   }
 });
 
