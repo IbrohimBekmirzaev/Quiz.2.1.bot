@@ -26,7 +26,11 @@ function buildMenuKeyboard(tests, page) {
   if (page < totalPages) navRow.push({ text: 'Keyingi ▶️', callback_data: `PAGE_${page + 1}` });
   if (navRow.length) inline_keyboard.push(navRow);
 
-  inline_keyboard.push([{ text: 'Mini App 🌐', web_app: { url: config.miniAppUrl } }]);
+  if (config.miniAppWebAppUrl) {
+    inline_keyboard.push([{ text: 'Mini App 🌐', web_app: { url: config.miniAppWebAppUrl } }]);
+  } else {
+    inline_keyboard.push([{ text: 'Mini App 🌐', url: config.miniAppUrl }]);
+  }
 
   return { inline_keyboard };
 }

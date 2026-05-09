@@ -19,6 +19,15 @@ function validateHttpUrl(name, value) {
   }
 }
 
+function isTelegramHost(value) {
+  try {
+    const url = new URL(value);
+    return ['t.me', 'telegram.me', 'www.t.me', 'www.telegram.me'].includes(url.hostname);
+  } catch (_) {
+    return false;
+  }
+}
+
 function required(name) {
   const value = process.env[name];
   if (!value) {
@@ -86,8 +95,14 @@ if (secondLogGroupId) {
 }
 
 const adminGroupIds = logTargets.map((target) => String(target.groupId));
-const defaultMiniAppUrl = process.env.MINI_APP_URL
-  || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}/mini-app` : 'https://t.me/');
+const railwayMiniAppUrl = process.env.RAILWAY_PUBLIC_DOMAIN
+  ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}/mini-app`
+  : '';
+const rawMiniAppUrl = process.env.MINI_APP_URL || railwayMiniAppUrl || 'https://t.me/';
+const miniAppUrl = validateHttpUrl('MINI_APP_URL', rawMiniAppUrl);
+const miniAppWebAppUrl = !isTelegramHost(miniAppUrl)
+  ? miniAppUrl
+  : (railwayMiniAppUrl && !isTelegramHost(railwayMiniAppUrl) ? railwayMiniAppUrl : '');
 
 module.exports = {
   botName: process.env.BOT_NAME || 'Qalb Ul Arabiyya Quiz boti',
@@ -102,7 +117,8 @@ module.exports = {
   secondLogGroupId,
   adminGroupIds,
   logTargets,
-  miniAppUrl: validateHttpUrl('MINI_APP_URL', defaultMiniAppUrl),
+  miniAppUrl,
+  miniAppWebAppUrl,
   apiUrl: validateHttpUrl('API_URL', process.env.API_URL || 'https://bs.asmoarabic.com/api/getAllLessonVocabularies'),
   booksApiUrl: validateHttpUrl('BOOKS_API_URL', process.env.BOOKS_API_URL || 'https://bs.asmoarabic.com/api/getbooks'),
   questionsPerTest: toNumber('QUESTIONS_PER_TEST', 10),
