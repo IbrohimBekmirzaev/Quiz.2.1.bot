@@ -406,6 +406,8 @@ function renderTabs() {
 
 function render() {
   if (!state.boot) {
+    document.body.classList.remove('runner-mode');
+    app.classList.remove('runner-mode');
     app.innerHTML = `
       <div class="loading-screen">
         <div class="loading-badge">Mini App</div>
@@ -418,12 +420,16 @@ function render() {
 
   const profile = getProfile();
   if (state.currentQuiz) {
+    document.body.classList.add('runner-mode');
+    app.classList.add('runner-mode');
     app.innerHTML = `
       ${renderQuizSection()}
     `;
     return;
   }
 
+  document.body.classList.remove('runner-mode');
+  app.classList.remove('runner-mode');
   app.innerHTML = `
     ${renderHeader(profile)}
     ${renderQuizSection()}
