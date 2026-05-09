@@ -313,7 +313,7 @@ function renderQuizSection() {
   const tests = state.boot?.tests || [];
 
   return `
-    <section class="section ${state.tab === 'quiz' ? '' : 'hidden'}" id="tab-quiz">
+    <section class="section ${state.currentQuiz ? 'runner-shell' : ''} ${state.tab === 'quiz' ? '' : 'hidden'}" id="tab-quiz">
       ${state.currentQuiz ? renderActiveQuiz() : renderQuizList(tests)}
     </section>
   `;
