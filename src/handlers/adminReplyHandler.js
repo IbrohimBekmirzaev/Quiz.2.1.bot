@@ -2,8 +2,18 @@ const config = require('../config');
 const { logError } = require('../services/loggerService');
 
 function extractChatId(text = '') {
-  const match = text.match(/💬 Chat ID:\s*(-?\d+)/);
+  const match = text.match(/(?:💬\s*)?Chat ID:\s*(-?\d+)/i);
   return match ? match[1] : null;
+}
+
+function findTargetChatId(message, depth = 0) {
+  if (!message || depth > 4) return null;
+
+  const sourceText = message.text || message.caption || '';
+  const directMatch = extractChatId(sourceText);
+  if (directMatch) return directMatch;
+
+  return findTargetChatId(message.reply_to_message, depth + 1);
 }
 
 async function sendDeliveryNotice(bot, msg, targetChatId, typeLabel) {
@@ -22,8 +32,7 @@ async function handleAdminReply(bot, msg) {
     if (!config.adminGroupIds.includes(String(msg.chat.id))) return false;
     if (!msg.reply_to_message) return false;
 
-    const sourceText = msg.reply_to_message.text || msg.reply_to_message.caption || '';
-    const targetChatId = extractChatId(sourceText);
+    const targetChatId = findTargetChatId(msg.reply_to_message);
     if (!targetChatId) return false;
 
     if (msg.text) {
