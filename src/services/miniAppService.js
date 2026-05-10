@@ -58,6 +58,37 @@ function getDailyChallengeEndsAt() {
   return tomorrow.toISOString();
 }
 
+function formatDuelStatus(status, isCreator) {
+  if (status === 'draw') {
+    return {
+      medal: '🤝',
+      title: 'Durrang',
+      subtitle: 'Ikkalangiz ham bir xil natija ko‘rsatdingiz.'
+    };
+  }
+
+  if (status === 'creator_won' || status === 'opponent_won') {
+    const won = (status === 'creator_won' && isCreator) || (status === 'opponent_won' && !isCreator);
+    return won
+      ? {
+          medal: '🏆',
+          title: 'Duel g‘olibi',
+          subtitle: 'Siz bu duelda yutdingiz.'
+        }
+      : {
+          medal: '🥈',
+          title: 'Duel yakunlandi',
+          subtitle: 'Bu safar raqib ustun keldi.'
+        };
+  }
+
+  return {
+    medal: '⚔️',
+    title: 'Duel davom etmoqda',
+    subtitle: 'Raqib javobini kutmoqda.'
+  };
+}
+
 function buildTestList(tests, dailyChallengeId) {
   return tests.map((test) => ({
     id: test.id,
@@ -106,7 +137,10 @@ async function getMiniAppBootPayload(userPayload) {
           id: dailyChallenge.id,
           name: dailyChallenge.name,
           questionCount: Math.min(dailyChallenge.items.length, config.questionsPerTest),
-          endsAt: getDailyChallengeEndsAt()
+          endsAt: getDailyChallengeEndsAt(),
+          completedToday: Boolean(profile.challengeCompletedToday),
+          streak: Number(profile.challengeStreak || 0),
+          rewardTitle: profile.challengeCompletedToday ? 'Bugungi badge olindi' : 'Bugungi bonus badge'
         }
       : null,
     activeQuiz: buildResumeQuiz(activeQuiz),
@@ -165,13 +199,13 @@ async function startWeakWordsQuiz(userPayload) {
   }
 
   const tests = await getTests();
-  const allItems = await getVocabularyList();
   const weakItems = profile.weakWords.map((item, index) => ({
     arabic: item.arabic,
     uzbek: item.correctAnswer,
     id: `weak_${index}`
   }));
   const test = { id: 9000, name: 'Weak Words', items: weakItems };
+  const allItems = await getVocabularyList();
   const questions = pickQuestions(weakItems, allItems, weakItems.length)
     .slice(0, Math.min(config.questionsPerTest, weakItems.length))
     .map((question, index) => sanitizeQuestion(question, index));
@@ -182,7 +216,7 @@ async function startWeakWordsQuiz(userPayload) {
     test: {
       id: test.id,
       name: test.name,
-      subtitle: 'Xato qilingan so‘zlar'
+      subtitle: `${questions.length} ta eng zaif so‘z`
     },
     currentIndex: 0,
     answers: new Array(questions.length).fill(null),
@@ -203,7 +237,7 @@ async function createMiniAppDuel(userPayload, testIndex) {
 
   return {
     duelCode: duel.code,
-    shareText: `Menga qarshi duelga qo‘shil: ${duel.code}`,
+    shareText: `⚔️ Menga qarshi duelga qo‘shil!\n\nTest: ${test.name}\nKod: ${duel.code}\nMini App: ${config.miniAppUrl}`,
     quiz
   };
 }
@@ -307,6 +341,12 @@ function finishMiniAppQuiz(userPayload, payload = {}) {
   const profile = getProfileView(user);
   const previousBadges = new Set((before.badges || []).map((badge) => badge.id));
   const unlockedBadges = (profile.badges || []).filter((badge) => !previousBadges.has(badge.id));
+  const duelSummary = duel
+    ? {
+        ...duel,
+        result: formatDuelStatus(duel.status, String(duel.creatorId) === String(user.id))
+      }
+    : null;
 
   return {
     testIndex: session.testIndex,
@@ -318,10 +358,12 @@ function finishMiniAppQuiz(userPayload, payload = {}) {
     profile,
     leaderboard: getLeaderboard(),
     analytics: isAdminUser(user) ? getMiniAppAnalytics() : null,
-    duel,
+    duel: duelSummary,
     notifications: {
       unlockedBadges,
       challengeCompleted: Boolean(session.isDailyChallenge),
+      challengeStreak: profile.challengeStreak > before.challengeStreak ? profile.challengeStreak : null,
+      duelOutcome: duelSummary?.result || null,
       newLevel: profile.level?.name !== before.level?.name ? profile.level : null
     }
   };

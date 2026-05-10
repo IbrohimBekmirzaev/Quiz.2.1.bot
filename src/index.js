@@ -118,7 +118,7 @@ async function runReminderCycle() {
     try {
       await bot.sendMessage(
         profile.id,
-        `🔔 Sizni mini app kutyapti.\n\n🔥 Streak: ${profile.streakDays || 0} kun\n📚 Daily challenge ham tayyor.\n\nMini appga kirib davom eting.`
+        `🔔 Sizni mini app kutyapti.\n\n🔥 Login streak: ${profile.streakDays || 0} kun\n⚡ Daily challenge tayyor\n📚 Zaif so‘zlaringizni ham qayta ko‘rishingiz mumkin.\n\nMini appga kirib davom eting.`
       );
       markReminderSent(profile.id);
     } catch (error) {
@@ -153,6 +153,14 @@ async function sendMiniAppSyncMessages(userId, notifications = {}) {
 
   if (notifications.challengeCompleted) {
     messages.push('⚡ Daily challenge yakunlandi.');
+  }
+
+  if (notifications.challengeStreak && notifications.challengeStreak > 1) {
+    messages.push(`🎯 Daily challenge streak: ${notifications.challengeStreak} kun.`);
+  }
+
+  if (notifications.duelOutcome?.title) {
+    messages.push(`${notifications.duelOutcome.medal || '⚔️'} ${notifications.duelOutcome.title}`);
   }
 
   if (notifications.newLevel?.name) {

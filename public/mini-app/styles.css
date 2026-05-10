@@ -271,6 +271,19 @@ body.runner-mode {
   font-size: 18px;
 }
 
+.challenge-reward {
+  margin-top: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid var(--line);
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .duel-card {
   display: grid;
   gap: 14px;
@@ -733,6 +746,10 @@ html[data-theme="light"] .tabs {
   border-color: rgba(69, 185, 255, 0.34);
 }
 
+.leaderboard-live-card {
+  animation: premiumPulse 0.9s ease;
+}
+
 .podium {
   align-items: end;
 }
@@ -863,6 +880,34 @@ html[data-theme="light"] .tabs {
   margin: 0;
 }
 
+.profile-level-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 10px;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.profile-level-bar {
+  width: 100%;
+  height: 8px;
+  margin-top: 8px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(160, 183, 218, 0.18);
+}
+
+.profile-level-bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #45b9ff, #5869ff, #7b5cff);
+}
+
 .profile-hero-avatar {
   width: 84px;
   height: 84px;
@@ -899,6 +944,10 @@ html[data-theme="light"] .tabs {
 .profile-helper {
   color: var(--muted);
   font-size: 12px;
+}
+
+.profile-sub-note {
+  margin-top: 12px;
 }
 
 .reminder-toggle {
@@ -1013,6 +1062,43 @@ html[data-theme="light"] .tabs {
   animation: premiumPulse 1.2s ease;
 }
 
+.duel-result-banner,
+.challenge-done-banner {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: linear-gradient(135deg, rgba(255, 182, 72, 0.12), rgba(255,255,255,0.03));
+}
+
+.challenge-done-banner {
+  grid-template-columns: 1fr;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.duel-result-banner.creator_won,
+.duel-result-banner.opponent_won {
+  box-shadow: inset 0 -2px 0 rgba(255, 182, 72, 0.92);
+}
+
+.duel-result-banner.draw {
+  box-shadow: inset 0 -2px 0 rgba(69, 185, 255, 0.92);
+}
+
+.duel-result-medal {
+  width: 52px;
+  height: 52px;
+  border-radius: 18px;
+  display: grid;
+  place-items: center;
+  background: rgba(255,255,255,0.08);
+  font-size: 26px;
+}
+
 .premium-result-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -1103,6 +1189,18 @@ html[data-theme="light"] .tabs {
 .onboarding-card h2 {
   margin: 14px 0 8px;
   font-size: 28px;
+}
+
+.onboarding-emoji {
+  width: 68px;
+  height: 68px;
+  border-radius: 22px;
+  display: grid;
+  place-items: center;
+  font-size: 34px;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid var(--line);
+  margin-top: 12px;
 }
 
 .onboarding-card p {

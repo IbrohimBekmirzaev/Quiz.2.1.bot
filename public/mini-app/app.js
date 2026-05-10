@@ -273,6 +273,8 @@ function renderQuizList(tests) {
           <strong>${escapeHtml(dailyChallenge.name)}</strong>
           <div class="muted">${dailyChallenge.questionCount} ta savol • bugungi maxsus test</div>
           <div class="muted">${getChallengeTimeLeft()}</div>
+          <div class="muted">🔥 Challenge streak: ${dailyChallenge.streak || 0} kun</div>
+          <div class="challenge-reward">${dailyChallenge.completedToday ? '✅ Bugun bajarilgan' : '🏅 ' + escapeHtml(dailyChallenge.rewardTitle || 'Bonus badge')}</div>
         </div>
         <button class="button" data-action="start-daily-challenge" data-test-id="${dailyChallenge.id}">Boshlash</button>
       </div>
@@ -282,7 +284,7 @@ function renderQuizList(tests) {
         <div>
           <div class="badge">Weak Words Retry</div>
           <strong>Xato qilingan so‘zlar testi</strong>
-          <div class="muted">${weakWords.length} ta zaif so‘zni qayta mustahkamlang</div>
+          <div class="muted">${weakWords.length} ta eng ko‘p xato qilingan so‘zni qayta mustahkamlang</div>
         </div>
         <button class="button" data-action="start-weak-quiz">Boshlash</button>
       </div>
@@ -345,6 +347,20 @@ function renderActiveQuiz() {
           <div class="runner-badge">Natija</div>
           <h2 class="runner-title">${escapeHtml(active.result.testName)}</h2>
         </div>
+
+        ${active.result.duel?.result ? `
+          <div class="duel-result-banner ${active.result.duel.status || ''}">
+            <div class="duel-result-medal">${active.result.duel.result.medal}</div>
+            <div>
+              <strong>${escapeHtml(active.result.duel.result.title)}</strong>
+              <div class="muted">${escapeHtml(active.result.duel.result.subtitle)}</div>
+            </div>
+          </div>
+        ` : ''}
+
+        ${active.result.profile?.challengeCompletedToday ? `
+          <div class="challenge-done-banner">⚡ Daily challenge bajarildi • streak ${active.result.profile.challengeStreak || 0} kun</div>
+        ` : ''}
 
         <div class="result-panel runner-result premium-result">
           <div class="premium-result-grid">
@@ -488,7 +504,7 @@ function renderRatingSection() {
       <div class="top-three podium">
         ${podium.map((item) => `
           <article class="leader-card ${item.rank === 1 ? 'primary podium-center' : 'podium-side'} ${item.id === currentUserId ? 'leader-self' : ''}">
-            <div class="podium-rank">#${item.rank}</div>
+            <div class="podium-rank">${item.rank === 1 ? '👑 ' : ''}#${item.rank}</div>
             <div class="avatar leader-avatar">${item.avatarUrl ? `<img src="${item.avatarUrl}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">` : initials(item.displayName)}</div>
             <strong class="podium-name">${escapeHtml(item.displayName)}</strong>
             <div class="muted podium-points">${item.points} ball</div>
@@ -496,7 +512,7 @@ function renderRatingSection() {
         `).join('')}
       </div>
       ${myRank ? `
-        <div class="my-rank-card leader-self">
+        <div class="my-rank-card leader-self leaderboard-live-card">
           <div class="my-rank-copy">
             <div class="badge">Mening o‘rnim</div>
             <strong>#${myRank.rank} ${escapeHtml(myRank.displayName)}</strong>
@@ -528,6 +544,7 @@ function renderProfileSection(profile) {
   const accuracy = profile.totalCorrect + profile.totalWrong
     ? Math.round((profile.totalCorrect / (profile.totalCorrect + profile.totalWrong)) * 100)
     : 0;
+  const levelProgress = Math.max(0, Math.min(100, Number(profile.level?.progress || 0)));
 
   return `
     <section class="section ${state.tab === 'profile' ? '' : 'hidden'}" id="tab-profile">
@@ -544,6 +561,11 @@ function renderProfileSection(profile) {
           <div class="badge">User Profile</div>
           <h3>${escapeHtml(profile.displayName)}</h3>
           <p>${escapeHtml(profile.username)} • ID ${escapeHtml(profile.id)}</p>
+          <div class="profile-level-row">
+            <span>${escapeHtml(profile.level?.name || 'Bronze')}</span>
+            <span>${levelProgress}%</span>
+          </div>
+          <div class="profile-level-bar"><span style="width:${levelProgress}%"></span></div>
         </div>
       </div>
       <div class="profile-editor">
@@ -571,6 +593,8 @@ function renderProfileSection(profile) {
           <article class="stat-card profile-stat"><small class="muted">Best score</small><strong>${profile.bestScore}%</strong></article>
           <article class="stat-card profile-stat"><small class="muted">Level</small><strong>${profile.level?.name || 'Bronze'}</strong></article>
           <article class="stat-card profile-stat"><small class="muted">Duel</small><strong>${profile.duelWins}W / ${profile.duelLosses}L</strong></article>
+          <article class="stat-card profile-stat"><small class="muted">Jami savol</small><strong>${profile.totalQuestions || 0}</strong></article>
+          <article class="stat-card profile-stat"><small class="muted">Challenge streak</small><strong>${profile.challengeStreak || 0}</strong></article>
         </div>
       </div>
       <div class="profile-extras">
@@ -580,6 +604,24 @@ function renderProfileSection(profile) {
             <div><small class="muted">Hozirgi</small><strong>${profile.streakDays} kun</strong></div>
             <div><small class="muted">Eng yaxshi</small><strong>${profile.bestStreak} kun</strong></div>
             <div><small class="muted">Challenge</small><strong>${profile.challengeCompletions}</strong></div>
+          </div>
+          <div class="muted profile-sub-note">Daily challenge streak: ${profile.challengeStreak || 0} • Best: ${profile.bestChallengeStreak || 0}</div>
+        </section>
+        <section class="extra-card">
+          <div class="badge">Highlights</div>
+          <div class="history-list">
+            ${profile.bestAttempt ? `
+              <div class="history-item">
+                <strong>Eng yaxshi test: ${escapeHtml(profile.bestAttempt.testName)}</strong>
+                <div class="muted">📈 ${profile.bestAttempt.percent}% • ✅ ${profile.bestAttempt.correct} • ❌ ${profile.bestAttempt.wrong}</div>
+              </div>
+            ` : '<div class="muted">Eng yaxshi test hali yo‘q</div>'}
+            ${profile.lastDuel ? `
+              <div class="history-item">
+                <strong>Oxirgi duel: ${escapeHtml(profile.lastDuel.testName)}</strong>
+                <div class="muted">⚔️ ${escapeHtml(profile.lastDuel.status)} • ${escapeHtml(profile.lastDuel.code)}</div>
+              </div>
+            ` : '<div class="muted">Oxirgi duel hali yo‘q</div>'}
           </div>
         </section>
         <section class="extra-card">
@@ -648,11 +690,26 @@ function renderAdminSection() {
       </div>
       <div class="profile-scoreboard">
         <article class="stat-card profile-stat"><small class="muted">Bugun open</small><strong>${analytics.opensToday}</strong></article>
+        <article class="stat-card profile-stat"><small class="muted">Bugun active user</small><strong>${analytics.activeUsersToday}</strong></article>
         <article class="stat-card profile-stat"><small class="muted">Bugun quiz</small><strong>${analytics.quizzesToday}</strong></article>
         <article class="stat-card profile-stat"><small class="muted">Jami profil</small><strong>${analytics.totalProfiles}</strong></article>
         <article class="stat-card profile-stat"><small class="muted">Jami urinish</small><strong>${analytics.totalAttempts}</strong></article>
+        <article class="stat-card profile-stat"><small class="muted">Open → Quiz</small><strong>${analytics.conversionRate}%</strong></article>
+        <article class="stat-card profile-stat"><small class="muted">Duel</small><strong>${analytics.duelStats?.finished || 0}/${analytics.duelStats?.total || 0}</strong></article>
       </div>
-      ${analytics.topTest ? `<div class="extra-card"><div class="badge">Top Test</div><strong>${escapeHtml(analytics.topTest.name)}</strong><div class="muted">${analytics.topTest.count} marta</div></div>` : ''}
+      ${analytics.topTests?.length ? `
+        <div class="extra-card">
+          <div class="badge">Top 5 Tests</div>
+          <div class="history-list">
+            ${analytics.topTests.map((item, index) => `
+              <div class="history-item">
+                <strong>#${index + 1} ${escapeHtml(item.name)}</strong>
+                <div class="muted">${item.count} marta ishlatilgan</div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      ` : ''}
       ${analytics.mostActiveUser ? `<div class="extra-card"><div class="badge">Most Active</div><strong>${escapeHtml(analytics.mostActiveUser.displayName)}</strong><div class="muted">${analytics.mostActiveUser.count} urinish</div></div>` : ''}
     </section>
   `;
@@ -663,9 +720,9 @@ function renderOnboarding() {
   if (!profile || profile.hasSeenOnboarding) return '';
 
   const slides = [
-    { title: 'Quiz Arena', text: 'Testlarni tanlang, natijangizni kuzating va reytingda ko‘tariling.' },
-    { title: 'Daily Challenge', text: 'Har kuni maxsus challenge chiqadi. Uni o‘tkazib yubormang.' },
-    { title: 'Profile va Badges', text: 'Profilni bezang, streak yig‘ing va yangi badge’larni oching.' }
+    { emoji: '🎯', title: 'Quiz Arena', text: 'Testlarni tanlang, natijangizni kuzating va reytingda ko‘tariling.' },
+    { emoji: '⚡', title: 'Daily Challenge', text: 'Har kuni maxsus challenge chiqadi. Uni o‘tkazib yubormang.' },
+    { emoji: '🏅', title: 'Profile va Badges', text: 'Profilni bezang, streak yig‘ing va yangi badge’larni oching.' }
   ];
   const slide = slides[state.onboardingStep] || slides[0];
 
@@ -673,6 +730,7 @@ function renderOnboarding() {
     <div class="onboarding-overlay">
       <div class="onboarding-card">
         <div class="badge">Welcome</div>
+        <div class="onboarding-emoji">${slide.emoji}</div>
         <h2>${slide.title}</h2>
         <p>${slide.text}</p>
         <div class="onboarding-dots">
@@ -841,7 +899,7 @@ async function startWeakQuiz() {
 }
 
 async function createDuel() {
-  const testId = getFilteredTests()[0]?.id || state.boot?.tests?.[0]?.id || 1;
+  const testId = state.boot?.tests?.[0]?.id || 1;
   const data = await api('/api/mini-app/duel/create', {
     user: getTelegramUser(),
     testIndex: testId
@@ -1140,7 +1198,8 @@ document.addEventListener('click', async (event) => {
     if (action === 'share-result') {
       const result = state.currentQuiz?.result;
       if (!result) return;
-      const text = `${result.testName}\n✅ ${result.correct}\n❌ ${result.wrong}\n📈 ${result.percent}%`;
+      const duelLine = result.duel?.result ? `\n${result.duel.result.medal} ${result.duel.result.title}` : '';
+      const text = `📊 ${result.testName}\n✅ ${result.correct}\n❌ ${result.wrong}\n📈 ${result.percent}%${duelLine}`;
       if (navigator.share) {
         try {
           await navigator.share({ text });
