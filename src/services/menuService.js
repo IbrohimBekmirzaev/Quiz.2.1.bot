@@ -1,5 +1,13 @@
 const config = require('../config');
 
+function buildMiniAppButtonRow() {
+  if (config.miniAppWebAppUrl) {
+    return [{ text: 'Mini App 🌐', web_app: { url: config.miniAppWebAppUrl } }];
+  }
+
+  return [{ text: 'Mini App 🌐', url: config.miniAppUrl }];
+}
+
 function buildMenuKeyboard(tests, page) {
   const totalTests = tests.length;
   const start = (page - 1) * config.testsPerPage + 1;
@@ -26,13 +34,9 @@ function buildMenuKeyboard(tests, page) {
   if (page < totalPages) navRow.push({ text: 'Keyingi ▶️', callback_data: `PAGE_${page + 1}` });
   if (navRow.length) inline_keyboard.push(navRow);
 
-  if (config.miniAppWebAppUrl) {
-    inline_keyboard.push([{ text: 'Mini App 🌐', web_app: { url: config.miniAppWebAppUrl } }]);
-  } else {
-    inline_keyboard.push([{ text: 'Mini App 🌐', url: config.miniAppUrl }]);
-  }
+  inline_keyboard.push(buildMiniAppButtonRow());
 
   return { inline_keyboard };
 }
 
-module.exports = { buildMenuKeyboard };
+module.exports = { buildMenuKeyboard, buildMiniAppButtonRow };

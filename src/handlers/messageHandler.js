@@ -1,5 +1,6 @@
 const config = require('../config');
 const { showMenu, clearSession } = require('../services/quizService');
+const { buildMiniAppButtonRow } = require('../services/menuService');
 const { logStart, forwardUserSupport, logError } = require('../services/loggerService');
 const { buildAdminStatsText } = require('../services/adminService');
 const { handleAdminReply } = require('./adminReplyHandler');
@@ -38,6 +39,7 @@ async function handleMessage(bot, msg) {
         'ℹ️ Yordam',
         '',
         '• /start - botni ochadi',
+        '• /app - mini appni ochadi',
         '• /menu - testlar menyusini qayta ochadi',
         '• Testni tanlang, arabcha so\'zni o\'qing va tarjimani belgilang',
         '• Savolga javob topolmasangiz, oddiy xabar yozing. U adminga yuboriladi'
@@ -46,6 +48,19 @@ async function handleMessage(bot, msg) {
           inline_keyboard: [[{ text: 'Menyu 📚', callback_data: 'BACK_TO_MENU' }]]
         }
       });
+      return;
+    }
+
+    if (text === '/app') {
+      await bot.sendMessage(
+        msg.chat.id,
+        'Mini appni ochish uchun pastdagi tugmani bosing:',
+        {
+          reply_markup: {
+            inline_keyboard: [buildMiniAppButtonRow()]
+          }
+        }
+      );
       return;
     }
 
