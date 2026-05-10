@@ -187,6 +187,44 @@ async function startWeakWordsQuiz(userPayload) {
   };
 }
 
+async function startMistakeWordsQuiz(userPayload, mistakesPayload = []) {
+  const user = normalizeTelegramUser(userPayload);
+  const mistakes = Array.isArray(mistakesPayload) ? mistakesPayload : [];
+  const mistakeItems = mistakes
+    .filter((item) => item?.arabic && item?.correctAnswer)
+    .slice(0, 10)
+    .map((item, index) => ({
+      arabic: item.arabic,
+      uzbek: item.correctAnswer,
+      id: `mistake_${index}`
+    }));
+
+  if (!mistakeItems.length) {
+    throw new Error('Qayta yechish uchun xato so‘z topilmadi.');
+  }
+
+  const test = { id: 9001, name: 'Xato so‘zlar', items: mistakeItems };
+  const allItems = await getVocabularyList();
+  const questions = pickQuestions(mistakeItems, allItems, mistakeItems.length)
+    .slice(0, Math.min(config.questionsPerTest, mistakeItems.length))
+    .map((question, index) => sanitizeQuestion(question, index));
+  const quizId = createQuizSession(user, test, questions, { isDailyChallenge: false });
+
+  return {
+    quizId,
+    test: {
+      id: test.id,
+      name: test.name,
+      subtitle: `${questions.length} ta xato so‘z`
+    },
+    currentIndex: 0,
+    answers: new Array(questions.length).fill(null),
+    startedAt: Date.now(),
+    isDailyChallenge: false,
+    questions
+  };
+}
+
 function saveMiniAppQuizProgress(userPayload, payload = {}) {
   const user = normalizeTelegramUser(userPayload);
   const quizId = String(payload.quizId || '');
@@ -275,6 +313,7 @@ function finishMiniAppQuiz(userPayload, payload = {}) {
     percent,
     durationSeconds,
     profile,
+    mistakes,
     leaderboard: getLeaderboard(),
     analytics: isAdminUser(user) ? getMiniAppAnalytics() : null,
     shareCard: {
@@ -306,6 +345,7 @@ module.exports = {
   getMiniAppBootPayload,
   startMiniAppQuiz,
   startWeakWordsQuiz,
+  startMistakeWordsQuiz,
   saveMiniAppQuizProgress,
   finishMiniAppQuiz,
   updateMiniAppProfile,

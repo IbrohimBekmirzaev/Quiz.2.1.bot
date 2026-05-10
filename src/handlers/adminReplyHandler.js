@@ -1,10 +1,16 @@
 const config = require('../config');
 const { logError } = require('../services/loggerService');
 const { formatDate } = require('../utils/time');
+const { markSupportAnswered } = require('../storage/supportStore');
 
 function extractChatId(text = '') {
   const match = text.match(/(?:💬\s*)?Chat ID:\s*(-?\d+)/i) || text.match(/UID:\s*(-?\d+)/i);
   return match ? match[1] : null;
+}
+
+function extractSupportId(text = '') {
+  const match = text.match(/SID:\s*([A-Z0-9-]+)/i);
+  return match ? match[1].toUpperCase() : null;
 }
 
 function findTargetChatId(message, depth = 0) {
@@ -32,6 +38,7 @@ async function markSupportLogAnswered(bot, msg) {
 
   const sourceText = logMessage.text || logMessage.caption || '';
   if (!sourceText || sourceText.includes('Holat: Javob berildi')) return;
+  markSupportAnswered(extractSupportId(sourceText));
 
   const updatedText = sourceText.replace(
     '⏳ Holat: Javob kutilmoqda',

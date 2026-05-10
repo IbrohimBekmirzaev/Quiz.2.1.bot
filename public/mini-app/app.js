@@ -444,6 +444,7 @@ function renderActiveQuiz() {
           </div>
           <div class="row premium-result-actions">
             <button class="secondary-button" data-action="restart-test" data-test-id="${active.test.id}">Qayta</button>
+            ${active.result.mistakes?.length ? '<button class="button" data-action="start-mistake-quiz">Xato so‘zlarni yechish</button>' : ''}
             ${Number(active.test.id) === 9000 && active.result.wrong > 0 ? '<button class="button" data-action="start-weak-quiz">Yana mustahkamlash</button>' : ''}
             ${nextTestId ? `<button class="button" data-action="start-quiz" data-test-id="${nextTestId}">Keyingi test</button>` : ''}
             <button class="secondary-button" data-action="share-result">Ulashish</button>
@@ -921,17 +922,43 @@ function renderToast() {
   `;
 }
 
+function renderLoadingScreen() {
+  return `
+    <div class="loading-screen">
+      <div class="loading-card">
+        <div class="loading-mark">ق</div>
+        <div class="loading-badge">Mini App</div>
+        <h1>Qalb Ul Arabiyya</h1>
+        <p>Testlar, reyting va profilingiz tayyorlanmoqda...</p>
+        <div class="loading-lines" aria-hidden="true">
+          <span></span>
+          <span></span>
+          <span></span>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderErrorScreen(message) {
+  return `
+    <div class="loading-screen">
+      <div class="loading-card error-card">
+        <div class="loading-mark error">!</div>
+        <div class="loading-badge">Xatolik</div>
+        <h1>Mini App yuklanmadi</h1>
+        <p>${escapeHtml(message || 'Tarmoqda muammo bo‘ldi. Qayta urinib ko‘ring.')}</p>
+        <button class="button" data-action="reload-app">Qayta urinish</button>
+      </div>
+    </div>
+  `;
+}
+
 function render() {
   if (!state.boot) {
     document.body.classList.remove('runner-mode');
     app.classList.remove('runner-mode');
-    app.innerHTML = `
-      <div class="loading-screen">
-        <div class="loading-badge">Mini App</div>
-        <h1>Qalb Ul Arabiyya</h1>
-        <p>Ma'lumotlar yuklanmoqda...</p>
-      </div>
-    `;
+    app.innerHTML = renderLoadingScreen();
     return;
   }
 
@@ -1001,6 +1028,30 @@ async function startQuiz(testId, options = {}) {
 
 async function startWeakQuiz() {
   const data = await api('/api/mini-app/quiz/weak', { user: getTelegramUser() });
+  state.currentQuiz = {
+    quizId: data.quizId,
+    test: data.test,
+    questions: data.questions,
+    currentIndex: 0,
+    startedAt: Date.now(),
+    isDailyChallenge: false
+  };
+  state.selectedAnswers = new Array(data.questions.length).fill(null);
+  state.result = null;
+  state.tab = 'quiz';
+  state.timerNow = Date.now();
+  state.autoAdvanceLock = false;
+  state.boot.activeQuiz = null;
+  state.rankCelebration = null;
+  startTimer();
+  render();
+}
+
+async function startMistakeQuiz(mistakes = []) {
+  const data = await api('/api/mini-app/quiz/mistakes', {
+    user: getTelegramUser(),
+    mistakes
+  });
   state.currentQuiz = {
     quizId: data.quizId,
     test: data.test,
@@ -1179,6 +1230,12 @@ document.addEventListener('click', async (event) => {
       return;
     }
 
+    if (action === 'reload-app') {
+      haptic('impact');
+      window.location.reload();
+      return;
+    }
+
     if (action === 'tab') {
       if (state.currentQuiz && trigger.dataset.tab !== 'quiz') return;
       haptic('selection');
@@ -1216,6 +1273,12 @@ document.addEventListener('click', async (event) => {
     if (action === 'start-weak-quiz') {
       haptic('impact');
       await startWeakQuiz();
+      return;
+    }
+
+    if (action === 'start-mistake-quiz') {
+      haptic('impact');
+      await startMistakeQuiz(state.currentQuiz?.result?.mistakes || []);
       return;
     }
 
@@ -1372,11 +1435,5 @@ document.addEventListener('input', (event) => {
 });
 
 bootstrap().catch((error) => {
-  app.innerHTML = `
-    <div class="loading-screen">
-      <div class="loading-badge">Xatolik</div>
-      <h1>Mini App yuklanmadi</h1>
-      <p>${escapeHtml(error.message)}</p>
-    </div>
-  `;
+  app.innerHTML = renderErrorScreen(error.message);
 });

@@ -2,6 +2,7 @@ const config = require('../config');
 const { formatDate } = require('../utils/time');
 const { buildUserBlock } = require('../utils/user');
 const { registerUserIfNew } = require('../storage/userStatsStore');
+const { createSupportItem } = require('../storage/supportStore');
 
 const targetFailureNoticeAt = new Map();
 const FAILURE_NOTICE_COOLDOWN_MS = 1000 * 60 * 10;
@@ -45,7 +46,7 @@ function getSupportMessageType(msg = {}) {
   return { icon: '💬', label: 'xabar' };
 }
 
-function buildSupportLogText(msg, { includeOriginalText = true, captionLimit = MEDIA_CAPTION_LIMIT } = {}) {
+function buildSupportLogText(msg, { includeOriginalText = true, captionLimit = MEDIA_CAPTION_LIMIT, supportId = '' } = {}) {
   const type = getSupportMessageType(msg);
   const user = msg.from || {};
   const chatId = msg.chat?.id || user.id || 'Noma\'lum';
@@ -57,6 +58,7 @@ function buildSupportLogText(msg, { includeOriginalText = true, captionLimit = M
     `🔗 ${username}`,
     `🆔 ${user.id || 'Noma\'lum'}`,
     `UID: ${chatId}`,
+    `SID: ${supportId || 'Noma\'lum'}`,
     '⏳ Holat: Javob kutilmoqda'
   ];
 
@@ -154,9 +156,10 @@ async function sendTopicText(bot, topicId, text, extra = {}) {
   return results;
 }
 
-async function sendSupportPayload(bot, target, msg) {
+async function sendSupportPayload(bot, target, msg, supportItem) {
   const textLog = buildSupportLogText(msg, {
-    captionLimit: msg.text ? TEXT_MESSAGE_LIMIT : MEDIA_CAPTION_LIMIT
+    captionLimit: msg.text ? TEXT_MESSAGE_LIMIT : MEDIA_CAPTION_LIMIT,
+    supportId: supportItem.id
   });
 
   const common = {
@@ -344,7 +347,14 @@ async function logError(bot, error, extra = {}) {
 }
 
 async function forwardUserSupport(bot, msg) {
-  const deliveries = config.logTargets.map((target) => sendSupportPayload(bot, target, msg));
+  const type = getSupportMessageType(msg);
+  const supportItem = createSupportItem({
+    user: msg.from,
+    chatId: msg.chat?.id,
+    typeLabel: type.label,
+    preview: msg.text || msg.caption || ''
+  });
+  const deliveries = config.logTargets.map((target) => sendSupportPayload(bot, target, msg, supportItem));
   const results = await Promise.allSettled(deliveries);
   const fulfilled = results.filter((result) => result.status === 'fulfilled');
 

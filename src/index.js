@@ -5,19 +5,21 @@ const TelegramBot = require('node-telegram-bot-api');
 const config = require('./config');
 const { handleMessage } = require('./handlers/messageHandler');
 const { handleCallback } = require('./handlers/callbackHandler');
-const { logError, logQuizFinished, logQuizStarted, logLink } = require('./services/loggerService');
+const { logError, logQuizFinished, logQuizStarted, logLink, sendTopicText } = require('./services/loggerService');
 const { processPollAnswer } = require('./services/quizService');
 const { getLessonTests } = require('./services/vocabularyService');
 const {
   getMiniAppBootPayload,
   startMiniAppQuiz,
   startWeakWordsQuiz,
+  startMistakeWordsQuiz,
   saveMiniAppQuizProgress,
   finishMiniAppQuiz,
   updateMiniAppProfile,
   normalizeTelegramUser
 } = require('./services/miniAppService');
 const { getReminderCandidates, markReminderSent } = require('./storage/miniAppStore');
+const { formatDate } = require('./utils/time');
 
 const bot = new TelegramBot(config.botToken, { polling: true });
 let pollingRestartTimer = null;
@@ -108,6 +110,20 @@ async function setupTelegramBotUi() {
     }
   } catch (error) {
     await safeLogError(error, { place: 'setupTelegramBotUi' });
+  }
+}
+
+async function logStartupHealth() {
+  try {
+    await sendTopicText(bot, 'start', [
+      '🟢 Bot ishga tushdi',
+      `🤖 ${config.botName}`,
+      `🌐 Mini App: ${config.miniAppWebAppUrl || config.miniAppUrl}`,
+      `🚦 Health: ${process.env.PORT ? `PORT ${process.env.PORT}` : 'local polling'}`,
+      `🕒 ${formatDate()}`
+    ].join('\n'));
+  } catch (error) {
+    console.error('Startup log yuborilmadi:', error.message);
   }
 }
 
@@ -272,6 +288,13 @@ async function handleMiniAppApi(req, res, requestUrl) {
     return;
   }
 
+  if (requestUrl.pathname === '/api/mini-app/quiz/mistakes') {
+    const data = await startMistakeWordsQuiz(user, payload.mistakes || []);
+    await logQuizStarted(bot, virtualMsg, data.test.name, 'mini_app');
+    sendJson(res, 200, { ok: true, data });
+    return;
+  }
+
   if (requestUrl.pathname === '/api/mini-app/quiz/progress') {
     const data = saveMiniAppQuizProgress(user, payload);
     sendJson(res, 200, { ok: true, data });
@@ -427,5 +450,6 @@ console.log('Telegram polling yoqildi.');
 warmupTests();
 setupTelegramBotUi();
 startReminderLoop();
+logStartupHealth();
 
 console.log(`${config.botName} ishga tushdi.`);
