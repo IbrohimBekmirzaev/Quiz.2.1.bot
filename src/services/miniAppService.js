@@ -160,7 +160,7 @@ async function startWeakWordsQuiz(userPayload) {
   }
 
   const tests = await getTests();
-  const weakItems = profile.weakWords.map((item, index) => ({
+  const weakItems = profile.weakWords.slice(0, 5).map((item, index) => ({
     arabic: item.arabic,
     uzbek: item.correctAnswer,
     id: `weak_${index}`
@@ -176,8 +176,8 @@ async function startWeakWordsQuiz(userPayload) {
     quizId,
     test: {
       id: test.id,
-      name: test.name,
-      subtitle: `${questions.length} ta eng zaif so‘z`
+      name: 'Top 5 Weak Words',
+      subtitle: `${questions.length} ta eng ko‘p xato qilingan so‘z`
     },
     currentIndex: 0,
     answers: new Array(questions.length).fill(null),

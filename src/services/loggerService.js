@@ -7,6 +7,7 @@ const targetFailureNoticeAt = new Map();
 const FAILURE_NOTICE_COOLDOWN_MS = 1000 * 60 * 10;
 const MEDIA_CAPTION_LIMIT = 1024;
 const TEXT_MESSAGE_LIMIT = 4096;
+const errorRepeatState = new Map();
 
 function getSourceLabel(source = 'telegram_bot') {
   return source === 'mini_app' ? 'Mini App' : 'Telegram Bot';
@@ -55,7 +56,8 @@ function buildSupportLogText(msg, { includeOriginalText = true, captionLimit = M
     `👤 ${getUserLine(user)}`,
     `🔗 ${username}`,
     `🆔 ${user.id || 'Noma\'lum'}`,
-    `UID: ${chatId}`
+    `UID: ${chatId}`,
+    '⏳ Holat: Javob kutilmoqda'
   ];
 
   if (originalText) {
@@ -65,6 +67,37 @@ function buildSupportLogText(msg, { includeOriginalText = true, captionLimit = M
   const text = lines.join('\n');
   if (text.length <= captionLimit) return text;
   return truncateText(text, captionLimit);
+}
+
+function getErrorKey(error, extra = {}) {
+  return [
+    extra.place || 'unknown',
+    error?.message || String(error)
+  ].join('|');
+}
+
+function shouldSendErrorLog(error, extra = {}) {
+  const key = getErrorKey(error, extra);
+  const current = errorRepeatState.get(key) || {
+    count: 0,
+    lastSummaryAt: 0
+  };
+  current.count += 1;
+  errorRepeatState.set(key, current);
+
+  if (current.count === 1) {
+    return { send: true, summary: '' };
+  }
+
+  if (current.count % 10 === 0) {
+    current.lastSummaryAt = Date.now();
+    return {
+      send: true,
+      summary: `\n\n🔁 Shu xato ${current.count} marta takrorlandi.`
+    };
+  }
+
+  return { send: false, summary: '' };
 }
 
 async function notifySecondaryTargetFailure(bot, target, reason, topicKey = 'error') {
@@ -283,6 +316,12 @@ async function logLink(bot, msg, label, url, source = 'telegram_bot') {
 }
 
 async function logError(bot, error, extra = {}) {
+  const repeat = shouldSendErrorLog(error, extra);
+  if (!repeat.send) {
+    console.error(`Takroriy error log o'tkazib yuborildi: ${error?.message || String(error)}`);
+    return;
+  }
+
   const shortStack = getShortStack(error);
   const text = [
     '🚨 Error',
@@ -293,7 +332,8 @@ async function logError(bot, error, extra = {}) {
     `👤 User ID: ${extra.userId || 'Noma\'lum'}`,
     `💬 Chat ID: ${extra.chatId || 'Noma\'lum'}`,
     `🕒 ${formatDate()}`,
-    ...(shortStack ? ['', shortStack] : [])
+    ...(shortStack ? ['', shortStack] : []),
+    ...(repeat.summary ? [repeat.summary.trim()] : [])
   ].join('\n');
 
   try {

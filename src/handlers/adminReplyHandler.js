@@ -1,5 +1,6 @@
 const config = require('../config');
 const { logError } = require('../services/loggerService');
+const { formatDate } = require('../utils/time');
 
 function extractChatId(text = '') {
   const match = text.match(/(?:💬\s*)?Chat ID:\s*(-?\d+)/i) || text.match(/UID:\s*(-?\d+)/i);
@@ -16,7 +17,44 @@ function findTargetChatId(message, depth = 0) {
   return findTargetChatId(message.reply_to_message, depth + 1);
 }
 
+function findSupportLogMessage(message, depth = 0) {
+  if (!message || depth > 4) return null;
+  const sourceText = message.text || message.caption || '';
+  if (sourceText.includes('Holat: Javob kutilmoqda') || sourceText.includes('Holat: Javob berildi')) {
+    return message;
+  }
+  return findSupportLogMessage(message.reply_to_message, depth + 1);
+}
+
+async function markSupportLogAnswered(bot, msg) {
+  const logMessage = findSupportLogMessage(msg.reply_to_message);
+  if (!logMessage) return;
+
+  const sourceText = logMessage.text || logMessage.caption || '';
+  if (!sourceText || sourceText.includes('Holat: Javob berildi')) return;
+
+  const updatedText = sourceText.replace(
+    '⏳ Holat: Javob kutilmoqda',
+    `✅ Holat: Javob berildi\n🕒 Javob vaqti: ${formatDate()}`
+  );
+  const options = {
+    chat_id: msg.chat.id,
+    message_id: logMessage.message_id
+  };
+
+  try {
+    if (logMessage.caption !== undefined) {
+      await bot.editMessageCaption(updatedText, options);
+      return;
+    }
+    await bot.editMessageText(updatedText, options);
+  } catch (error) {
+    console.error('Support status yangilanmadi:', error.message);
+  }
+}
+
 async function sendDeliveryNotice(bot, msg, targetChatId, typeLabel) {
+  await markSupportLogAnswered(bot, msg);
   await bot.sendMessage(
     msg.chat.id,
     `✅ ${typeLabel} foydalanuvchiga yuborildi.\n💬 Chat ID: ${targetChatId}`,

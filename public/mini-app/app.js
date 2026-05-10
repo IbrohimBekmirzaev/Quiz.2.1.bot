@@ -345,11 +345,12 @@ function renderQuizList(tests) {
 
   return `
     ${resumableQuiz ? `
-      <div class="resume-card">
+      <div class="resume-card resume-priority-card">
         <div>
           <div class="badge">Continue</div>
           <strong>${escapeHtml(resumableQuiz.test.name)}</strong>
           <div class="muted">${resumableQuiz.currentIndex + 1}/${resumableQuiz.questions.length} savolda to‘xtagansiz</div>
+          <div class="muted">Shu joydan davom etsangiz natija saqlanib ketadi.</div>
         </div>
         <button class="button" data-action="resume-quiz">Davom etish</button>
       </div>
@@ -443,6 +444,7 @@ function renderActiveQuiz() {
           </div>
           <div class="row premium-result-actions">
             <button class="secondary-button" data-action="restart-test" data-test-id="${active.test.id}">Qayta</button>
+            ${Number(active.test.id) === 9000 && active.result.wrong > 0 ? '<button class="button" data-action="start-weak-quiz">Yana mustahkamlash</button>' : ''}
             ${nextTestId ? `<button class="button" data-action="start-quiz" data-test-id="${nextTestId}">Keyingi test</button>` : ''}
             <button class="secondary-button" data-action="share-result">Ulashish</button>
           </div>
@@ -609,6 +611,9 @@ function renderProfileSection(profile) {
     : 0;
   const levelProgress = Math.max(0, Math.min(100, Number(profile.level?.progress || 0)));
   const rankText = profile.allTimeRank ? `#${profile.allTimeRank}` : '-';
+  const today = profile.today || { attempts: 0, correct: 0, wrong: 0, points: 0 };
+  const weeklyGrowth = Number(profile.weeklyGrowth || 0);
+  const topWeakWords = (profile.weakWords || []).slice(0, 5);
 
   return `
     <section class="section ${state.tab === 'profile' ? '' : 'hidden'}" id="tab-profile">
@@ -639,6 +644,19 @@ function renderProfileSection(profile) {
         <article class="stat-card profile-stat accuracy"><small class="muted">Aniqlik</small><strong>${accuracy}%</strong></article>
         <article class="stat-card profile-stat"><small class="muted">Reyting</small><strong>${rankText}</strong></article>
         <article class="stat-card profile-stat"><small class="muted">Urinishlar</small><strong>${profile.attempts}</strong></article>
+      </div>
+
+      <div class="profile-compact-grid">
+        <article class="profile-compact-card">
+          <div class="badge">Bugun</div>
+          <strong>${today.points} ball</strong>
+          <span>${today.attempts} urinish • ✅ ${today.correct} • ❌ ${today.wrong}</span>
+        </article>
+        <article class="profile-compact-card">
+          <div class="badge">Haftalik o‘sish</div>
+          <strong>${weeklyGrowth >= 0 ? '+' : ''}${weeklyGrowth}</strong>
+          <span>Bu hafta ${profile.weeklyPoints || 0} ball</span>
+        </article>
       </div>
 
       <div class="profile-panel">
@@ -711,7 +729,7 @@ function renderProfileSection(profile) {
         <section class="extra-card">
           <div class="badge">Mustahkamlash</div>
           <div class="weak-list">
-            ${profile.weakWords?.length ? profile.weakWords.map((item) => `
+            ${topWeakWords.length ? topWeakWords.map((item) => `
               <div class="weak-item">
                 <strong>${escapeHtml(item.arabic)}</strong>
                 <span>${escapeHtml(item.correctAnswer)}</span>
@@ -719,7 +737,7 @@ function renderProfileSection(profile) {
               </div>
             `).join('') : '<div class="muted">Weak words hali yo‘q</div>'}
           </div>
-          ${profile.weakWords?.length ? '<button class="secondary-button weak-retry-button" data-action="start-weak-quiz">Xato so‘zlardan test</button>' : ''}
+          ${topWeakWords.length ? '<button class="secondary-button weak-retry-button" data-action="start-weak-quiz">Top 5 so‘zdan test</button>' : ''}
         </section>
 
         ${state.boot?.analytics ? `
@@ -774,6 +792,46 @@ function renderAdminSection() {
         </div>
       ` : ''}
       ${analytics.mostActiveUser ? `<div class="extra-card"><div class="badge">Most Active</div><strong>${escapeHtml(analytics.mostActiveUser.displayName)}</strong><div class="muted">${analytics.mostActiveUser.count} urinish</div></div>` : ''}
+      ${analytics.activeUsersTop?.length ? `
+        <div class="extra-card">
+          <div class="badge">Eng faol userlar</div>
+          <div class="history-list">
+            ${analytics.activeUsersTop.map((item, index) => `
+              <div class="history-item">
+                <strong>#${index + 1} ${escapeHtml(item.displayName)}</strong>
+                <div class="muted">${item.count} urinish</div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      ` : ''}
+      ${analytics.hardestTests?.length ? `
+        <div class="extra-card">
+          <div class="badge">Eng qiyin testlar</div>
+          <div class="history-list">
+            ${analytics.hardestTests.map((item, index) => `
+              <div class="history-item">
+                <strong>#${index + 1} ${escapeHtml(item.name)}</strong>
+                <div class="muted">Xato ulushi ${item.wrongRate}% • ${item.attempts} urinish</div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      ` : ''}
+      ${analytics.topWeakWords?.length ? `
+        <div class="extra-card">
+          <div class="badge">Eng ko‘p xato so‘zlar</div>
+          <div class="weak-list">
+            ${analytics.topWeakWords.slice(0, 5).map((item) => `
+              <div class="weak-item">
+                <strong>${escapeHtml(item.arabic)}</strong>
+                <span>${escapeHtml(item.correctAnswer)}</span>
+                <small>${item.count} marta</small>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      ` : ''}
     </section>
   `;
 }

@@ -93,6 +93,7 @@ async function setupTelegramBotUi() {
       { command: 'start', description: 'Botni boshlash' },
       { command: 'quiz', description: 'Quiz testni boshlash' },
       { command: 'app', description: 'Mini Appni ochish' },
+      { command: 'profile', description: 'Profil va natijalar' },
       { command: 'help', description: 'Yordam' }
     ]);
 
@@ -116,7 +117,7 @@ async function runReminderCycle() {
     try {
       await bot.sendMessage(
         profile.id,
-        `🔔 Sizni mini app kutyapti.\n\n🔥 Login streak: ${profile.streakDays || 0} kun\n⚡ Daily challenge tayyor\n📚 Zaif so‘zlaringizni ham qayta ko‘rishingiz mumkin.\n\nMini appga kirib davom eting.`
+        `🔔 Bugungi challenge tayyor.\n\n🔥 Streak: ${profile.streakDays || 0} kun\n📚 Zaif so‘zlaringizni mustahkamlash ham mumkin.\n\nMini appga kirib davom eting.`
       );
       markReminderSent(profile.id);
     } catch (error) {

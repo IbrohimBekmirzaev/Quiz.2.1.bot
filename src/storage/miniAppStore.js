@@ -143,11 +143,22 @@ function getProfileFromStore(store, user, extra = {}) {
 function buildProfileSummary(store, profileId) {
   const attempts = store.attempts.filter((attempt) => String(attempt.userId) === String(profileId));
   const recentAttempts = attempts.slice(-5).reverse();
+  const today = dayKey();
+  const todayAttempts = attempts.filter((attempt) => dayKey(attempt.createdAt) === today);
   const totalCorrect = attempts.reduce((sum, attempt) => sum + Number(attempt.correct || 0), 0);
   const totalWrong = attempts.reduce((sum, attempt) => sum + Number(attempt.wrong || 0), 0);
   const points = attempts.reduce((sum, attempt) => sum + Number(attempt.correct || 0), 0);
   const weeklyPoints = attempts
     .filter((attempt) => isWithinLastDays(attempt.createdAt, 7))
+    .reduce((sum, attempt) => sum + Number(attempt.correct || 0), 0);
+  const previousWeeklyPoints = attempts
+    .filter((attempt) => {
+      const createdAt = new Date(attempt.createdAt);
+      const now = new Date();
+      const previousStart = new Date(now.getTime() - 14 * 86400000);
+      const currentStart = new Date(now.getTime() - 7 * 86400000);
+      return createdAt >= previousStart && createdAt < currentStart;
+    })
     .reduce((sum, attempt) => sum + Number(attempt.correct || 0), 0);
   const bestScore = attempts.reduce((max, attempt) => Math.max(max, Number(attempt.percent || 0)), 0);
 
@@ -187,10 +198,13 @@ function buildProfileSummary(store, profileId) {
   return {
     attempts,
     recentAttempts,
+    todayAttempts,
     totalCorrect,
     totalWrong,
     points,
     weeklyPoints,
+    previousWeeklyPoints,
+    weeklyGrowth: weeklyPoints - previousWeeklyPoints,
     bestScore,
     weakWords,
     totalQuestions,
@@ -449,11 +463,7 @@ function getReminderCandidates() {
   const today = dayKey();
   return Object.values(store.profiles).filter((profile) => {
     if (!profile.remindersEnabled) return false;
-    if (!profile.lastOpenedAt) return false;
     if (profile.lastReminderDay === today) return false;
-    const inactiveDays = daysBetween(dayKey(profile.lastOpenedAt), today);
-    if (inactiveDays < 2 || inactiveDays > 7) return false;
-    if (profile.lastReminderDay && daysBetween(profile.lastReminderDay, today) < 2) return false;
     return true;
   });
 }
@@ -492,6 +502,7 @@ function getProfileView(user) {
     totalWrong: summary.totalWrong,
     points: summary.points,
     weeklyPoints: summary.weeklyPoints,
+    weeklyGrowth: summary.weeklyGrowth,
     bestScore: summary.bestScore,
     totalQuestions: summary.totalQuestions,
     allTimeRank,
@@ -502,6 +513,12 @@ function getProfileView(user) {
     challengeStreak: Number(profile.challengeStreak || 0),
     bestChallengeStreak: Number(profile.bestChallengeStreak || 0),
     challengeCompletedToday: profile.lastChallengeDay === dayKey(),
+    today: {
+      attempts: summary.todayAttempts.length,
+      correct: summary.todayAttempts.reduce((sum, attempt) => sum + Number(attempt.correct || 0), 0),
+      wrong: summary.todayAttempts.reduce((sum, attempt) => sum + Number(attempt.wrong || 0), 0),
+      points: summary.todayAttempts.reduce((sum, attempt) => sum + Number(attempt.correct || 0), 0)
+    },
     remindersEnabled: Boolean(profile.remindersEnabled),
     hasSeenOnboarding: Boolean(profile.hasSeenOnboarding),
     recentResults: summary.recentAttempts.map((attempt) => ({
@@ -551,6 +568,45 @@ function getMiniAppAnalytics() {
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5)
     .map(([name, count]) => ({ name, count }));
+  const testDifficulty = new Map();
+  const globalWeakMap = new Map();
+  for (const attempt of attempts) {
+    const item = testDifficulty.get(attempt.testName) || { name: attempt.testName, wrong: 0, total: 0, attempts: 0 };
+    item.wrong += Number(attempt.wrong || 0);
+    item.total += Number(attempt.correct || 0) + Number(attempt.wrong || 0);
+    item.attempts += 1;
+    testDifficulty.set(attempt.testName, item);
+
+    for (const mistake of attempt.mistakes || []) {
+      const key = `${mistake.arabic}__${mistake.correctAnswer}`;
+      const current = globalWeakMap.get(key) || {
+        arabic: mistake.arabic,
+        correctAnswer: mistake.correctAnswer,
+        count: 0
+      };
+      current.count += 1;
+      globalWeakMap.set(key, current);
+    }
+  }
+  const hardestTests = [...testDifficulty.values()]
+    .filter((item) => item.total > 0)
+    .map((item) => ({
+      ...item,
+      wrongRate: Math.round((item.wrong / item.total) * 100)
+    }))
+    .sort((a, b) => b.wrongRate - a.wrongRate || b.attempts - a.attempts)
+    .slice(0, 5);
+  const topWeakWords = [...globalWeakMap.values()]
+    .sort((a, b) => b.count - a.count || a.arabic.localeCompare(b.arabic))
+    .slice(0, 10);
+  const activeUsersTop = [...userActivity.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([id, count]) => ({
+      id,
+      displayName: store.profiles[id]?.displayName || store.profiles[id]?.firstName || 'Foydalanuvchi',
+      count
+    }));
   const activeUsersToday = profiles.filter((profile) => {
     if (!profile.lastOpenedAt) return false;
     return dayKey(profile.lastOpenedAt) === today;
@@ -566,6 +622,9 @@ function getMiniAppAnalytics() {
     conversionRate,
     topTest: topTest ? { name: topTest[0], count: topTest[1] } : null,
     topTests,
+    hardestTests,
+    topWeakWords,
+    activeUsersTop,
     mostActiveUser: topUserProfile
       ? {
           id: topUserProfile.id,
@@ -575,6 +634,13 @@ function getMiniAppAnalytics() {
       : null,
     weeklyWinners: leaderboard.weekly.slice(0, 3)
   };
+}
+
+function getMiniAppBroadcastUsers() {
+  const store = readStore();
+  return Object.values(store.profiles)
+    .map((profile) => profile.id)
+    .filter(Boolean);
 }
 
 module.exports = {
@@ -590,6 +656,7 @@ module.exports = {
   getLeaderboard,
   getProfileView,
   getMiniAppAnalytics,
+  getMiniAppBroadcastUsers,
   getReminderCandidates,
   markReminderSent,
   upsertProfile,

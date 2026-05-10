@@ -156,9 +156,17 @@ function registerUserIfNew(msg, now = new Date()) {
   };
 }
 
+function getBroadcastUsers() {
+  const stats = readStats();
+  return Object.values(stats.users)
+    .map((user) => user.chatId || user.id)
+    .filter(Boolean);
+}
+
 module.exports = {
   readStats,
   buildSummary,
   registerUserIfNew,
+  getBroadcastUsers,
   statsFilePath
 };

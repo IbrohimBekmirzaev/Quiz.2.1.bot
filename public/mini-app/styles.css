@@ -264,6 +264,12 @@ body.runner-mode {
   margin-bottom: 12px;
 }
 
+.resume-priority-card {
+  border-color: rgba(88, 213, 143, 0.45);
+  background: linear-gradient(135deg, rgba(88, 213, 143, 0.13), rgba(69, 185, 255, 0.07));
+  box-shadow: 0 18px 42px rgba(88, 213, 143, 0.12);
+}
+
 .challenge-card strong,
 .resume-card strong {
   display: block;
@@ -945,6 +951,33 @@ html[data-theme="light"] .tabs {
   margin-top: 12px;
 }
 
+.profile-compact-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.profile-compact-card {
+  padding: 14px;
+  border-radius: 20px;
+  border: 1px solid var(--line);
+  background: rgba(255,255,255,0.035);
+}
+
+.profile-compact-card strong {
+  display: block;
+  margin-top: 8px;
+  font-size: 24px;
+}
+
+.profile-compact-card span {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .profile-panel {
   display: grid;
   gap: 12px;
@@ -1595,6 +1628,9 @@ html[data-theme="light"] .tabs {
   .profile-overview-grid {
     grid-template-columns: repeat(2, 1fr);
     gap: 8px;
+  }
+  .profile-compact-grid {
+    grid-template-columns: 1fr;
   }
   .profile-panel {
     padding: 12px;
