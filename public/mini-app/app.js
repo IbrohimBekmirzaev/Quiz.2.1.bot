@@ -38,7 +38,8 @@ const state = {
   avatarCropSource: null,
   avatarCropScale: 1,
   duelCodeInput: '',
-  toast: null
+  toast: null,
+  rankCelebration: null
 };
 
 let timerHandle = null;
@@ -178,6 +179,109 @@ function getChallengeTimeLeft() {
   return `${hours} soat ${minutes} daqiqa qoldi`;
 }
 
+function buildShareText(result) {
+  const duelLine = result.duel?.result ? `\n${result.duel.result.medal} ${result.duel.result.title}` : '';
+  return `📊 ${result.testName}\n✅ ${result.correct}\n❌ ${result.wrong}\n📈 ${result.percent}%${duelLine}`;
+}
+
+async function generateResultShareFile(result) {
+  const card = result.shareCard || {
+    title: result.testName,
+    percent: result.percent,
+    correct: result.correct,
+    wrong: result.wrong,
+    level: state.boot?.user?.level?.name || 'Bronze',
+    challengeCompletedToday: false,
+    duelTitle: result.duel?.result?.title || '',
+    duelMedal: result.duel?.result?.medal || ''
+  };
+
+  const canvas = document.createElement('canvas');
+  canvas.width = 1080;
+  canvas.height = 1350;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+
+  const gradient = ctx.createLinearGradient(0, 0, 1080, 1350);
+  gradient.addColorStop(0, '#10203b');
+  gradient.addColorStop(0.55, '#14284a');
+  gradient.addColorStop(1, '#09111f');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const glow = ctx.createRadialGradient(980, 110, 30, 980, 110, 400);
+  glow.addColorStop(0, 'rgba(69,185,255,0.28)');
+  glow.addColorStop(1, 'rgba(69,185,255,0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.fillStyle = '#8ea7cf';
+  ctx.font = '700 34px Manrope, sans-serif';
+  ctx.fillText('Qalb Ul Arabiyya Quiz', 72, 96);
+
+  ctx.fillStyle = '#f2f7ff';
+  ctx.font = '800 78px Manrope, sans-serif';
+  ctx.fillText(card.title || 'Quiz Result', 72, 190);
+
+  ctx.fillStyle = '#96a9c7';
+  ctx.font = '600 36px Manrope, sans-serif';
+  ctx.fillText(`Level: ${card.level || 'Bronze'}`, 72, 246);
+
+  const panels = [
+    { x: 72, y: 320, w: 280, h: 210, label: 'To‘g‘ri', value: String(card.correct), color: '#58d58f' },
+    { x: 400, y: 320, w: 280, h: 210, label: 'Xato', value: String(card.wrong), color: '#ff6767' },
+    { x: 728, y: 320, w: 280, h: 210, label: 'Foiz', value: `${card.percent}%`, color: '#45b9ff' }
+  ];
+
+  for (const panel of panels) {
+    ctx.fillStyle = 'rgba(255,255,255,0.05)';
+    ctx.strokeStyle = 'rgba(255,255,255,0.10)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(panel.x, panel.y, panel.w, panel.h, 32);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#8ea7cf';
+    ctx.font = '700 28px Manrope, sans-serif';
+    ctx.fillText(panel.label, panel.x + 28, panel.y + 54);
+    ctx.fillStyle = panel.color;
+    ctx.font = '800 82px Manrope, sans-serif';
+    ctx.fillText(panel.value, panel.x + 28, panel.y + 142);
+  }
+
+  if (card.duelTitle) {
+    ctx.fillStyle = 'rgba(255,255,255,0.05)';
+    ctx.strokeStyle = 'rgba(255,255,255,0.10)';
+    ctx.beginPath();
+    ctx.roundRect(72, 580, 936, 170, 32);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#f2f7ff';
+    ctx.font = '800 46px Manrope, sans-serif';
+    ctx.fillText(`${card.duelMedal || '⚔️'} ${card.duelTitle}`, 106, 655);
+  }
+
+  if (card.challengeCompletedToday) {
+    ctx.fillStyle = 'rgba(88,213,143,0.10)';
+    ctx.strokeStyle = 'rgba(88,213,143,0.45)';
+    ctx.beginPath();
+    ctx.roundRect(72, 790, 936, 120, 28);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#dff8ea';
+    ctx.font = '800 36px Manrope, sans-serif';
+    ctx.fillText('⚡ Daily challenge bajarildi', 106, 864);
+  }
+
+  ctx.fillStyle = '#8ea7cf';
+  ctx.font = '600 30px Manrope, sans-serif';
+  ctx.fillText(`@${(state.boot?.user?.username || 'arabiyya_quiz_bot').replace(/^@/, '')}`, 72, 1260);
+
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+  if (!blob) return null;
+  return new File([blob], `quiz-result-${Date.now()}.png`, { type: 'image/png' });
+}
+
 function getQuizStats() {
   if (!state.currentQuiz) {
     return { answered: 0, correct: 0, wrong: 0, percent: 0 };
@@ -300,6 +404,7 @@ function renderQuizList(tests) {
         <div class="row">
           <button class="secondary-button" data-action="join-duel">Qo‘shilish</button>
           <button class="button" data-action="create-duel">Duel yaratish</button>
+          ${state.duelCodeInput ? '<button class="secondary-button" data-action="share-duel">Kodni ulashish</button>' : ''}
         </div>
       </div>
     </div>
@@ -512,7 +617,7 @@ function renderRatingSection() {
         `).join('')}
       </div>
       ${myRank ? `
-        <div class="my-rank-card leader-self leaderboard-live-card">
+        <div class="my-rank-card leader-self leaderboard-live-card ${state.rankCelebration ? 'rank-up-celebration' : ''}">
           <div class="my-rank-copy">
             <div class="badge">Mening o‘rnim</div>
             <strong>#${myRank.rank} ${escapeHtml(myRank.displayName)}</strong>
@@ -848,6 +953,7 @@ async function bootstrap() {
 async function refreshBoot() {
   const data = await api('/api/mini-app/bootstrap', { user: getTelegramUser() });
   state.boot = data;
+  state.rankCelebration = null;
   render();
 }
 
@@ -874,6 +980,7 @@ async function startQuiz(testId, options = {}) {
   state.timerNow = Date.now();
   state.autoAdvanceLock = false;
   state.boot.activeQuiz = null;
+  state.rankCelebration = null;
   startTimer();
   render();
 }
@@ -894,6 +1001,7 @@ async function startWeakQuiz() {
   state.timerNow = Date.now();
   state.autoAdvanceLock = false;
   state.boot.activeQuiz = null;
+  state.rankCelebration = null;
   startTimer();
   render();
 }
@@ -924,6 +1032,7 @@ async function createDuel() {
   state.timerNow = Date.now();
   state.autoAdvanceLock = false;
   state.boot.activeQuiz = null;
+  state.rankCelebration = null;
   startTimer();
   render();
 }
@@ -945,6 +1054,7 @@ async function joinDuel() {
   state.timerNow = Date.now();
   state.autoAdvanceLock = false;
   state.boot.activeQuiz = null;
+  state.rankCelebration = null;
   startTimer();
   render();
 }
@@ -976,12 +1086,20 @@ async function finishQuiz() {
   state.boot.leaderboard = data.leaderboard;
   state.boot.analytics = data.analytics || state.boot.analytics;
   state.boot.activeQuiz = null;
+  state.rankCelebration = data.notifications?.rankImproved?.allTime || data.notifications?.rankImproved?.weekly
+    ? data.notifications.rankImproved
+    : null;
   state.currentQuiz = {
     ...state.currentQuiz,
     result: data
   };
   state.autoAdvanceLock = false;
-  showToast('Natija saqlandi', 'success');
+  if (state.rankCelebration?.allTime || state.rankCelebration?.weekly) {
+    const scope = state.rankCelebration.allTime ? 'All-time' : 'Weekly';
+    showToast(`${scope} reytingingiz yuqoriladi`, 'success');
+  } else {
+    showToast('Natija saqlandi', 'success');
+  }
   render();
 }
 
@@ -1166,6 +1284,23 @@ document.addEventListener('click', async (event) => {
       return;
     }
 
+    if (action === 'share-duel') {
+      const code = state.duelCodeInput.trim();
+      if (!code) return;
+      const text = `⚔️ Menga qarshi duelga qo‘shil!\n\nKod: ${code}\nMini App: ${window.location.origin}/mini-app`;
+      if (navigator.share) {
+        try {
+          await navigator.share({ text });
+        } catch (_) {
+          // ignore
+        }
+      } else if (navigator.clipboard) {
+        await navigator.clipboard.writeText(text);
+      }
+      showToast('Duel kodi ulashishga tayyor', 'success');
+      return;
+    }
+
     if (action === 'leave-quiz') {
       await persistQuizProgress();
       leaveQuiz();
@@ -1198,9 +1333,15 @@ document.addEventListener('click', async (event) => {
     if (action === 'share-result') {
       const result = state.currentQuiz?.result;
       if (!result) return;
-      const duelLine = result.duel?.result ? `\n${result.duel.result.medal} ${result.duel.result.title}` : '';
-      const text = `📊 ${result.testName}\n✅ ${result.correct}\n❌ ${result.wrong}\n📈 ${result.percent}%${duelLine}`;
-      if (navigator.share) {
+      const text = buildShareText(result);
+      const file = await generateResultShareFile(result);
+      if (file && navigator.canShare?.({ files: [file] }) && navigator.share) {
+        try {
+          await navigator.share({ files: [file], text });
+        } catch (_) {
+          // ignore
+        }
+      } else if (navigator.share) {
         try {
           await navigator.share({ text });
         } catch (_) {

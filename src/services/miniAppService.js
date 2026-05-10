@@ -341,6 +341,10 @@ function finishMiniAppQuiz(userPayload, payload = {}) {
   const profile = getProfileView(user);
   const previousBadges = new Set((before.badges || []).map((badge) => badge.id));
   const unlockedBadges = (profile.badges || []).filter((badge) => !previousBadges.has(badge.id));
+  const rankImproved = {
+    allTime: before.allTimeRank && profile.allTimeRank && profile.allTimeRank < before.allTimeRank,
+    weekly: before.weeklyRank && profile.weeklyRank && profile.weeklyRank < before.weeklyRank
+  };
   const duelSummary = duel
     ? {
         ...duel,
@@ -359,11 +363,22 @@ function finishMiniAppQuiz(userPayload, payload = {}) {
     leaderboard: getLeaderboard(),
     analytics: isAdminUser(user) ? getMiniAppAnalytics() : null,
     duel: duelSummary,
+    shareCard: {
+      title: session.testName,
+      percent,
+      correct,
+      wrong,
+      level: profile.level?.name || 'Bronze',
+      challengeCompletedToday: profile.challengeCompletedToday,
+      duelTitle: duelSummary?.result?.title || '',
+      duelMedal: duelSummary?.result?.medal || ''
+    },
     notifications: {
       unlockedBadges,
       challengeCompleted: Boolean(session.isDailyChallenge),
       challengeStreak: profile.challengeStreak > before.challengeStreak ? profile.challengeStreak : null,
       duelOutcome: duelSummary?.result || null,
+      rankImproved,
       newLevel: profile.level?.name !== before.level?.name ? profile.level : null
     }
   };

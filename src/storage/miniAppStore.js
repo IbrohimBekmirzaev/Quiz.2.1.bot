@@ -4,7 +4,7 @@ const crypto = require('crypto');
 
 const dataDir = path.join(__dirname, '..', '..', 'data');
 const storeFilePath = path.join(dataDir, 'mini-app-store.json');
-const STORE_VERSION = 2;
+const STORE_VERSION = 3;
 
 function ensureDataDir() {
   fs.mkdirSync(dataDir, { recursive: true });

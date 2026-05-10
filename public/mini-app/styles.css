@@ -750,6 +750,20 @@ html[data-theme="light"] .tabs {
   animation: premiumPulse 0.9s ease;
 }
 
+.rank-up-celebration {
+  position: relative;
+  overflow: hidden;
+}
+
+.rank-up-celebration::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(110deg, transparent 0%, rgba(255,255,255,0.08) 40%, transparent 75%);
+  transform: translateX(-120%);
+  animation: rankSweep 1.4s ease;
+}
+
 .podium {
   align-items: end;
 }
@@ -1234,6 +1248,15 @@ html[data-theme="light"] .tabs {
   to {
     transform: scale(1);
     opacity: 1;
+  }
+}
+
+@keyframes rankSweep {
+  from {
+    transform: translateX(-120%);
+  }
+  to {
+    transform: translateX(120%);
   }
 }
 

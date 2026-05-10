@@ -163,6 +163,14 @@ async function sendMiniAppSyncMessages(userId, notifications = {}) {
     messages.push(`${notifications.duelOutcome.medal || '⚔️'} ${notifications.duelOutcome.title}`);
   }
 
+  if (notifications.rankImproved?.allTime) {
+    messages.push('🚀 All-time reytingingiz yaxshilandi.');
+  }
+
+  if (notifications.rankImproved?.weekly) {
+    messages.push('📈 Weekly reytingingiz yuqoriladi.');
+  }
+
   if (notifications.newLevel?.name) {
     messages.push(`📈 Yangi daraja: ${notifications.newLevel.name}`);
   }
@@ -272,6 +280,14 @@ async function handleMiniAppApi(req, res, requestUrl) {
   if (requestUrl.pathname === '/api/mini-app/duel/create') {
     const data = await createMiniAppDuel(user, payload.testIndex);
     await logQuizStarted(bot, virtualMsg, `${data.quiz.test.name} [Duel]`, 'mini_app');
+    try {
+      await bot.sendMessage(
+        user.id,
+        `⚔️ Duel yaratildi.\n\n📚 Test: ${data.quiz.test.name}\n🔑 Kod: ${data.duelCode}\n🌐 Mini App: ${config.miniAppUrl}`
+      );
+    } catch (error) {
+      console.error('Duel create DM yuborilmadi:', error.message);
+    }
     sendJson(res, 200, { ok: true, data });
     return;
   }
@@ -279,6 +295,17 @@ async function handleMiniAppApi(req, res, requestUrl) {
   if (requestUrl.pathname === '/api/mini-app/duel/join') {
     const data = await joinMiniAppDuel(user, payload.duelCode);
     await logQuizStarted(bot, virtualMsg, `${data.quiz.test.name} [Duel]`, 'mini_app');
+    if (data.quiz?.duelCode) {
+      try {
+        const duelInfo = data.quiz.duelCode;
+        await bot.sendMessage(
+          user.id,
+          `⚔️ Duelga qo‘shildingiz.\n\n🔑 Kod: ${duelInfo}\n📚 Test: ${data.quiz.test.name}`
+        );
+      } catch (error) {
+        console.error('Duel join DM yuborilmadi:', error.message);
+      }
+    }
     sendJson(res, 200, { ok: true, data });
     return;
   }
@@ -293,6 +320,20 @@ async function handleMiniAppApi(req, res, requestUrl) {
     const data = await finishMiniAppQuiz(user, payload);
     await logQuizFinished(bot, virtualMsg, data.testName, data.correct, data.wrong, 'mini_app');
     await sendMiniAppSyncMessages(user.id, data.notifications);
+    if (data.duel?.status && ['creator_won', 'opponent_won', 'draw'].includes(data.duel.status)) {
+      const recipients = [data.duel.creatorId, data.duel.opponentId].filter(Boolean);
+      for (const recipient of recipients) {
+        if (String(recipient) === String(user.id)) continue;
+        try {
+          await bot.sendMessage(
+            recipient,
+            `${data.duel.result?.medal || '⚔️'} Duel yakunlandi.\n\n📚 ${data.testName}\n${data.duel.result?.title || 'Natija tayyor'}`
+          );
+        } catch (error) {
+          console.error('Duel result DM yuborilmadi:', error.message);
+        }
+      }
+    }
     sendJson(res, 200, { ok: true, data });
     return;
   }
