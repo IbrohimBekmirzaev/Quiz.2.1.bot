@@ -2,7 +2,7 @@ const config = require('../config');
 const { logError } = require('../services/loggerService');
 
 function extractChatId(text = '') {
-  const match = text.match(/(?:💬\s*)?Chat ID:\s*(-?\d+)/i);
+  const match = text.match(/(?:💬\s*)?Chat ID:\s*(-?\d+)/i) || text.match(/UID:\s*(-?\d+)/i);
   return match ? match[1] : null;
 }
 

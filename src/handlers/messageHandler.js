@@ -70,7 +70,20 @@ async function handleMessage(bot, msg) {
       return;
     }
 
-    if (msg.text || msg.photo || msg.video || msg.audio || msg.voice || msg.document || msg.sticker) {
+    if (
+      msg.text ||
+      msg.photo ||
+      msg.video ||
+      msg.video_note ||
+      msg.audio ||
+      msg.voice ||
+      msg.document ||
+      msg.animation ||
+      msg.sticker ||
+      msg.location ||
+      msg.contact ||
+      msg.poll
+    ) {
       await forwardUserSupport(bot, msg);
     }
   } catch (error) {

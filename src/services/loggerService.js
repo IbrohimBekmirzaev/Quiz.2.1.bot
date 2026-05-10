@@ -5,6 +5,8 @@ const { registerUserIfNew } = require('../storage/userStatsStore');
 
 const targetFailureNoticeAt = new Map();
 const FAILURE_NOTICE_COOLDOWN_MS = 1000 * 60 * 10;
+const MEDIA_CAPTION_LIMIT = 1024;
+const TEXT_MESSAGE_LIMIT = 4096;
 
 function getSourceLabel(source = 'telegram_bot') {
   return source === 'mini_app' ? 'Mini App' : 'Telegram Bot';
@@ -14,6 +16,55 @@ function getShortStack(error) {
   const stack = String(error?.stack || '').trim();
   if (!stack) return '';
   return stack.split('\n').slice(0, 4).join('\n');
+}
+
+function truncateText(value = '', limit = 700) {
+  const text = String(value || '').trim();
+  if (!text || text.length <= limit) return text;
+  return `${text.slice(0, limit - 3)}...`;
+}
+
+function getUserLine(user) {
+  const fullName = [user?.first_name || '', user?.last_name || ''].join(' ').trim();
+  return fullName || 'Noma\'lum';
+}
+
+function getSupportMessageType(msg = {}) {
+  if (msg.voice) return { icon: '🎙️', label: 'voice xabari' };
+  if (msg.photo?.length) return { icon: '📷', label: 'rasmi' };
+  if (msg.video) return { icon: '🎥', label: 'video xabari' };
+  if (msg.video_note) return { icon: '🎥', label: 'video note xabari' };
+  if (msg.audio) return { icon: '🎧', label: 'audio xabari' };
+  if (msg.document) return { icon: '📎', label: 'fayli' };
+  if (msg.animation) return { icon: '🎞️', label: 'GIF xabari' };
+  if (msg.sticker) return { icon: '🧩', label: 'sticker xabari' };
+  if (msg.location) return { icon: '📍', label: 'location xabari' };
+  if (msg.contact) return { icon: '☎️', label: 'contact xabari' };
+  if (msg.poll) return { icon: '📊', label: 'poll xabari' };
+  return { icon: '💬', label: 'xabar' };
+}
+
+function buildSupportLogText(msg, { includeOriginalText = true, captionLimit = MEDIA_CAPTION_LIMIT } = {}) {
+  const type = getSupportMessageType(msg);
+  const user = msg.from || {};
+  const chatId = msg.chat?.id || user.id || 'Noma\'lum';
+  const username = user.username ? `@${user.username}` : '@no_username';
+  const originalText = includeOriginalText ? truncateText(msg.text || msg.caption || '', 900) : '';
+  const lines = [
+    `${type.icon} Foydalanuvchi ${type.label}`,
+    `👤 ${getUserLine(user)}`,
+    `🔗 ${username}`,
+    `🆔 ${user.id || 'Noma\'lum'}`,
+    `UID: ${chatId}`
+  ];
+
+  if (originalText) {
+    lines.push('', originalText);
+  }
+
+  const text = lines.join('\n');
+  if (text.length <= captionLimit) return text;
+  return truncateText(text, captionLimit);
 }
 
 async function notifySecondaryTargetFailure(bot, target, reason, topicKey = 'error') {
@@ -70,52 +121,91 @@ async function sendTopicText(bot, topicId, text, extra = {}) {
   return results;
 }
 
-async function sendSupportPayload(bot, target, msg, header) {
-  const sentHeader = await bot.sendMessage(target.groupId, header, {
-    message_thread_id: target.topics.support
+async function sendSupportPayload(bot, target, msg) {
+  const textLog = buildSupportLogText(msg, {
+    captionLimit: msg.text ? TEXT_MESSAGE_LIMIT : MEDIA_CAPTION_LIMIT
   });
 
   const common = {
-    message_thread_id: target.topics.support,
-    reply_to_message_id: sentHeader.message_id
+    message_thread_id: target.topics.support
   };
 
   if (msg.text) {
-    return bot.sendMessage(target.groupId, msg.text, common);
+    return bot.sendMessage(target.groupId, textLog, common);
   }
   if (msg.photo?.length) {
     const photo = msg.photo[msg.photo.length - 1];
     return bot.sendPhoto(target.groupId, photo.file_id, {
       ...common,
-      caption: msg.caption || ''
+      caption: textLog
     });
   }
   if (msg.video) {
     return bot.sendVideo(target.groupId, msg.video.file_id, {
       ...common,
-      caption: msg.caption || ''
+      caption: textLog
     });
   }
   if (msg.audio) {
     return bot.sendAudio(target.groupId, msg.audio.file_id, {
       ...common,
-      caption: msg.caption || ''
+      caption: textLog
     });
   }
   if (msg.voice) {
-    return bot.sendVoice(target.groupId, msg.voice.file_id, common);
+    return bot.sendVoice(target.groupId, msg.voice.file_id, {
+      ...common,
+      caption: textLog
+    });
   }
   if (msg.document) {
     return bot.sendDocument(target.groupId, msg.document.file_id, {
       ...common,
-      caption: msg.caption || ''
+      caption: textLog
+    });
+  }
+  if (msg.animation) {
+    return bot.sendAnimation(target.groupId, msg.animation.file_id, {
+      ...common,
+      caption: textLog
     });
   }
   if (msg.sticker) {
-    return bot.sendSticker(target.groupId, msg.sticker.file_id, common);
+    const sentInfo = await bot.sendMessage(target.groupId, textLog, common);
+    return bot.sendSticker(target.groupId, msg.sticker.file_id, {
+      ...common,
+      reply_to_message_id: sentInfo.message_id
+    });
+  }
+  if (msg.video_note) {
+    const sentInfo = await bot.sendMessage(target.groupId, textLog, common);
+    return bot.sendVideoNote(target.groupId, msg.video_note.file_id, {
+      ...common,
+      reply_to_message_id: sentInfo.message_id
+    });
+  }
+  if (msg.location) {
+    return bot.sendLocation(target.groupId, msg.location.latitude, msg.location.longitude, common)
+      .then((sentLocation) => bot.sendMessage(target.groupId, textLog, {
+        ...common,
+        reply_to_message_id: sentLocation.message_id
+      }));
+  }
+  if (msg.contact) {
+    return bot.sendContact(target.groupId, msg.contact.phone_number, msg.contact.first_name, {
+      ...common,
+      last_name: msg.contact.last_name || undefined,
+      vcard: msg.contact.vcard || undefined
+    }).then((sentContact) => bot.sendMessage(target.groupId, textLog, {
+      ...common,
+      reply_to_message_id: sentContact.message_id
+    }));
+  }
+  if (msg.poll) {
+    return bot.sendMessage(target.groupId, textLog, common);
   }
 
-  return bot.sendMessage(target.groupId, 'Noma\'lum turdagi xabar keldi.', common);
+  return bot.sendMessage(target.groupId, textLog, common);
 }
 
 async function logStart(bot, msg) {
@@ -214,14 +304,7 @@ async function logError(bot, error, extra = {}) {
 }
 
 async function forwardUserSupport(bot, msg) {
-  const header = [
-    `💬 ${config.botName}`,
-    '',
-    buildUserBlock(msg.from, msg.chat.id),
-    `🕒 ${formatDate()}`
-  ].join('\n');
-
-  const deliveries = config.logTargets.map((target) => sendSupportPayload(bot, target, msg, header));
+  const deliveries = config.logTargets.map((target) => sendSupportPayload(bot, target, msg));
   const results = await Promise.allSettled(deliveries);
   const fulfilled = results.filter((result) => result.status === 'fulfilled');
 
