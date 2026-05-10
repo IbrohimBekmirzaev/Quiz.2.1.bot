@@ -53,16 +53,8 @@ async function markSupportLogAnswered(bot, msg) {
   }
 }
 
-async function sendDeliveryNotice(bot, msg, targetChatId, typeLabel) {
+async function markReplyDelivered(bot, msg) {
   await markSupportLogAnswered(bot, msg);
-  await bot.sendMessage(
-    msg.chat.id,
-    `✅ ${typeLabel} foydalanuvchiga yuborildi.\n💬 Chat ID: ${targetChatId}`,
-    {
-      message_thread_id: msg.message_thread_id,
-      reply_to_message_id: msg.message_id
-    }
-  );
 }
 
 async function handleAdminReply(bot, msg) {
@@ -75,38 +67,38 @@ async function handleAdminReply(bot, msg) {
 
     if (msg.text) {
       await bot.sendMessage(targetChatId, msg.text);
-      await sendDeliveryNotice(bot, msg, targetChatId, 'Xabar');
+      await markReplyDelivered(bot, msg);
       return true;
     }
     if (msg.photo?.length) {
       const photo = msg.photo[msg.photo.length - 1];
       await bot.sendPhoto(targetChatId, photo.file_id, { caption: msg.caption || '' });
-      await sendDeliveryNotice(bot, msg, targetChatId, 'Rasm');
+      await markReplyDelivered(bot, msg);
       return true;
     }
     if (msg.video) {
       await bot.sendVideo(targetChatId, msg.video.file_id, { caption: msg.caption || '' });
-      await sendDeliveryNotice(bot, msg, targetChatId, 'Video');
+      await markReplyDelivered(bot, msg);
       return true;
     }
     if (msg.audio) {
       await bot.sendAudio(targetChatId, msg.audio.file_id, { caption: msg.caption || '' });
-      await sendDeliveryNotice(bot, msg, targetChatId, 'Audio');
+      await markReplyDelivered(bot, msg);
       return true;
     }
     if (msg.voice) {
       await bot.sendVoice(targetChatId, msg.voice.file_id);
-      await sendDeliveryNotice(bot, msg, targetChatId, 'Voice');
+      await markReplyDelivered(bot, msg);
       return true;
     }
     if (msg.document) {
       await bot.sendDocument(targetChatId, msg.document.file_id, { caption: msg.caption || '' });
-      await sendDeliveryNotice(bot, msg, targetChatId, 'Fayl');
+      await markReplyDelivered(bot, msg);
       return true;
     }
     if (msg.sticker) {
       await bot.sendSticker(targetChatId, msg.sticker.file_id);
-      await sendDeliveryNotice(bot, msg, targetChatId, 'Sticker');
+      await markReplyDelivered(bot, msg);
       return true;
     }
 
