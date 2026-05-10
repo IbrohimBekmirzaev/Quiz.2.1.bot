@@ -32,8 +32,7 @@ function createEmptyStore() {
     version: STORE_VERSION,
     profiles: {},
     attempts: [],
-    activeQuizzes: {},
-    duels: {}
+    activeQuizzes: {}
   };
 }
 
@@ -43,8 +42,7 @@ function normalizeStore(store) {
     version: Number(store?.version || STORE_VERSION),
     profiles: store?.profiles || base.profiles,
     attempts: Array.isArray(store?.attempts) ? store.attempts : [],
-    activeQuizzes: store?.activeQuizzes || base.activeQuizzes,
-    duels: store?.duels || base.duels
+    activeQuizzes: store?.activeQuizzes || base.activeQuizzes
   };
 }
 
@@ -94,8 +92,6 @@ function createBaseProfile(user = {}) {
     challengeStreak: 0,
     bestChallengeStreak: 0,
     lastChallengeDay: '',
-    duelWins: 0,
-    duelLosses: 0,
     remindersEnabled: false,
     lastReminderDay: '',
     hasSeenOnboarding: false,
@@ -135,8 +131,6 @@ function getProfileFromStore(store, user, extra = {}) {
     challengeStreak: Number(existing.challengeStreak || 0),
     bestChallengeStreak: Number(existing.bestChallengeStreak || 0),
     lastChallengeDay: existing.lastChallengeDay || '',
-    duelWins: Number(existing.duelWins || 0),
-    duelLosses: Number(existing.duelLosses || 0),
     remindersEnabled: Boolean(existing.remindersEnabled),
     lastReminderDay: existing.lastReminderDay || '',
     hasSeenOnboarding: Boolean(existing.hasSeenOnboarding),
@@ -264,8 +258,6 @@ function computeBadges(profile, attempts, leaderboard) {
   if (attempts.some((attempt) => attempt.isDailyChallenge && dayKey(attempt.createdAt) === today)) {
     badges.push({ id: 'daily_done', label: 'Daily Challenge', icon: '⚡' });
   }
-  if (Number(profile.duelWins || 0) >= 1) badges.push({ id: 'duel_win', label: 'Duel Winner', icon: '⚔️' });
-
   const weeklyRank = leaderboard.weekly.find((item) => item.id === profile.id)?.rank || null;
   if (weeklyRank && weeklyRank <= 3) badges.push({ id: 'weekly_top3', label: 'Weekly Top 3', icon: '🏆' });
 
@@ -361,8 +353,7 @@ function createQuizSession(user, test, questions, extra = {}) {
     currentIndex: Number(extra.currentIndex || 0),
     answers: Array.isArray(extra.answers) ? extra.answers : new Array(questions.length).fill(null),
     questions,
-    isDailyChallenge: Boolean(extra.isDailyChallenge),
-    duelCode: String(extra.duelCode || '')
+    isDailyChallenge: Boolean(extra.isDailyChallenge)
   };
   writeStore(store);
   return quizId;
@@ -453,97 +444,6 @@ function recordQuizAttempt(user, summary) {
   return attempt;
 }
 
-function createDuelChallenge(user, test) {
-  const store = readStore();
-  const profile = getProfileFromStore(store, user);
-  let code = '';
-  for (let attempt = 0; attempt < 10; attempt += 1) {
-    const candidate = crypto.randomUUID().slice(0, 8).toUpperCase();
-    if (!store.duels[candidate]) {
-      code = candidate;
-      break;
-    }
-  }
-
-  if (!code) {
-    throw new Error('Duel kodini yaratib bo‘lmadi.');
-  }
-
-  store.duels[code] = {
-    code,
-    testIndex: test.id,
-    testName: test.name,
-    createdAt: new Date().toISOString(),
-    creatorId: profile.id,
-    opponentId: '',
-    creatorResult: null,
-    opponentResult: null,
-    status: 'waiting'
-  };
-
-  writeStore(store);
-  return store.duels[code];
-}
-
-function getDuelByCode(code) {
-  const store = readStore();
-  return store.duels[String(code || '').toUpperCase()] || null;
-}
-
-function attachDuelOpponent(code, user) {
-  const store = readStore();
-  const duel = store.duels[String(code || '').toUpperCase()];
-  if (!duel) return null;
-  const userId = getUserId(user);
-  if (!userId) return null;
-
-  if (String(duel.creatorId) === String(userId)) {
-    return null;
-  }
-
-  if (!duel.opponentId) {
-    duel.opponentId = userId;
-    duel.status = 'active';
-  } else if (String(duel.opponentId) !== String(userId)) {
-    return null;
-  }
-  store.duels[duel.code] = duel;
-  writeStore(store);
-  return duel;
-}
-
-function recordDuelResult(code, userId, result) {
-  const store = readStore();
-  const duel = store.duels[String(code || '').toUpperCase()];
-  if (!duel) return null;
-
-  if (String(duel.creatorId) === String(userId)) {
-    duel.creatorResult = result;
-  } else if (String(duel.opponentId) === String(userId)) {
-    duel.opponentResult = result;
-  }
-
-  if (duel.creatorResult && duel.opponentResult) {
-    const creatorScore = duel.creatorResult.percent * 1000 - duel.creatorResult.durationSeconds;
-    const opponentScore = duel.opponentResult.percent * 1000 - duel.opponentResult.durationSeconds;
-    if (creatorScore > opponentScore) {
-      duel.status = 'creator_won';
-      if (store.profiles[duel.creatorId]) store.profiles[duel.creatorId].duelWins += 1;
-      if (store.profiles[duel.opponentId]) store.profiles[duel.opponentId].duelLosses += 1;
-    } else if (opponentScore > creatorScore) {
-      duel.status = 'opponent_won';
-      if (store.profiles[duel.opponentId]) store.profiles[duel.opponentId].duelWins += 1;
-      if (store.profiles[duel.creatorId]) store.profiles[duel.creatorId].duelLosses += 1;
-    } else {
-      duel.status = 'draw';
-    }
-  }
-
-  store.duels[duel.code] = duel;
-  writeStore(store);
-  return duel;
-}
-
 function getReminderCandidates() {
   const store = readStore();
   const today = dayKey();
@@ -581,10 +481,6 @@ function getProfileView(user) {
   const badges = computeBadges(profile, summary.attempts, leaderboard);
   const allTimeRank = leaderboard.allTime.find((item) => item.id === profile.id)?.rank || null;
   const weeklyRank = leaderboard.weekly.find((item) => item.id === profile.id)?.rank || null;
-  const lastDuel = Object.values(store.duels)
-    .filter((duel) => String(duel.creatorId) === profile.id || String(duel.opponentId) === profile.id)
-    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0] || null;
-
   return {
     id: profile.id,
     displayName: profile.displayName,
@@ -606,8 +502,6 @@ function getProfileView(user) {
     challengeStreak: Number(profile.challengeStreak || 0),
     bestChallengeStreak: Number(profile.bestChallengeStreak || 0),
     challengeCompletedToday: profile.lastChallengeDay === dayKey(),
-    duelWins: Number(profile.duelWins || 0),
-    duelLosses: Number(profile.duelLosses || 0),
     remindersEnabled: Boolean(profile.remindersEnabled),
     hasSeenOnboarding: Boolean(profile.hasSeenOnboarding),
     recentResults: summary.recentAttempts.map((attempt) => ({
@@ -626,13 +520,6 @@ function getProfileView(user) {
       createdAt: summary.bestAttempt.createdAt
     } : null,
     weakWords: summary.weakWords,
-    lastDuel: lastDuel ? {
-      code: lastDuel.code,
-      testName: lastDuel.testName,
-      status: lastDuel.status,
-      isCreator: String(lastDuel.creatorId) === profile.id,
-      createdAt: lastDuel.createdAt
-    } : null,
     badges,
     level: getLevelInfo(summary.points)
   };
@@ -668,9 +555,6 @@ function getMiniAppAnalytics() {
     if (!profile.lastOpenedAt) return false;
     return dayKey(profile.lastOpenedAt) === today;
   }).length;
-  const duelList = Object.values(store.duels);
-  const duelFinished = duelList.filter((duel) => ['creator_won', 'opponent_won', 'draw'].includes(duel.status)).length;
-  const duelWaiting = duelList.filter((duel) => duel.status === 'waiting').length;
   const conversionRate = opensToday ? Math.round((todayAttempts.length / opensToday) * 100) : 0;
 
   return {
@@ -689,11 +573,6 @@ function getMiniAppAnalytics() {
           count: topUserEntry[1]
         }
       : null,
-    duelStats: {
-      total: duelList.length,
-      finished: duelFinished,
-      waiting: duelWaiting
-    },
     weeklyWinners: leaderboard.weekly.slice(0, 3)
   };
 }
@@ -708,10 +587,6 @@ module.exports = {
   getActiveQuizForUser,
   finishQuizSession,
   recordQuizAttempt,
-  createDuelChallenge,
-  getDuelByCode,
-  attachDuelOpponent,
-  recordDuelResult,
   getLeaderboard,
   getProfileView,
   getMiniAppAnalytics,

@@ -10,10 +10,6 @@ const {
   getActiveQuizForUser,
   finishQuizSession,
   recordQuizAttempt,
-  createDuelChallenge,
-  getDuelByCode,
-  attachDuelOpponent,
-  recordDuelResult,
   getLeaderboard,
   getProfileView,
   getMiniAppAnalytics,
@@ -58,37 +54,6 @@ function getDailyChallengeEndsAt() {
   return tomorrow.toISOString();
 }
 
-function formatDuelStatus(status, isCreator) {
-  if (status === 'draw') {
-    return {
-      medal: '🤝',
-      title: 'Durrang',
-      subtitle: 'Ikkalangiz ham bir xil natija ko‘rsatdingiz.'
-    };
-  }
-
-  if (status === 'creator_won' || status === 'opponent_won') {
-    const won = (status === 'creator_won' && isCreator) || (status === 'opponent_won' && !isCreator);
-    return won
-      ? {
-          medal: '🏆',
-          title: 'Duel g‘olibi',
-          subtitle: 'Siz bu duelda yutdingiz.'
-        }
-      : {
-          medal: '🥈',
-          title: 'Duel yakunlandi',
-          subtitle: 'Bu safar raqib ustun keldi.'
-        };
-  }
-
-  return {
-    medal: '⚔️',
-    title: 'Duel davom etmoqda',
-    subtitle: 'Raqib javobini kutmoqda.'
-  };
-}
-
 function buildTestList(tests, dailyChallengeId) {
   return tests.map((test) => ({
     id: test.id,
@@ -111,7 +76,6 @@ function buildResumeQuiz(session) {
     startedAt: Date.parse(session.startedAt || session.createdAt || new Date().toISOString()),
     answers: Array.isArray(session.answers) ? session.answers : new Array(session.questions.length).fill(null),
     isDailyChallenge: Boolean(session.isDailyChallenge),
-    duelCode: session.duelCode || '',
     questions: (session.questions || []).map((question, index) => sanitizeQuestion(question, index))
   };
 }
@@ -145,7 +109,6 @@ async function getMiniAppBootPayload(userPayload) {
       : null,
     activeQuiz: buildResumeQuiz(activeQuiz),
     analytics: isAdminUser(user) ? getMiniAppAnalytics() : null,
-    duelEnabled: true,
     notifications: {
       streakIncreased: profile.streakDays > before.streakDays,
       streakDays: profile.streakDays
@@ -171,8 +134,7 @@ async function startMiniAppQuiz(userPayload, testIndex, options = {}) {
 
   const questions = await createQuestionsForTest(test);
   const quizId = createQuizSession(user, test, questions, {
-    isDailyChallenge: Boolean(options.isDailyChallenge),
-    duelCode: options.duelCode || ''
+    isDailyChallenge: Boolean(options.isDailyChallenge)
   });
 
   return {
@@ -186,7 +148,6 @@ async function startMiniAppQuiz(userPayload, testIndex, options = {}) {
     answers: new Array(questions.length).fill(null),
     startedAt: Date.now(),
     isDailyChallenge: Boolean(options.isDailyChallenge),
-    duelCode: options.duelCode || '',
     questions
   };
 }
@@ -223,46 +184,6 @@ async function startWeakWordsQuiz(userPayload) {
     startedAt: Date.now(),
     isDailyChallenge: false,
     questions
-  };
-}
-
-async function createMiniAppDuel(userPayload, testIndex) {
-  const user = normalizeTelegramUser(userPayload);
-  const tests = await getTests();
-  const test = tests.find((item) => item.id === Number(testIndex));
-  if (!test) throw new Error('Test topilmadi.');
-
-  const duel = createDuelChallenge(user, test);
-  const quiz = await startMiniAppQuiz(user, test.id, { duelCode: duel.code });
-
-  return {
-    duelCode: duel.code,
-    shareText: `⚔️ Menga qarshi duelga qo‘shil!\n\nTest: ${test.name}\nKod: ${duel.code}\nMini App: ${config.miniAppUrl}`,
-    quiz
-  };
-}
-
-async function joinMiniAppDuel(userPayload, duelCode) {
-  const user = normalizeTelegramUser(userPayload);
-  const existing = getDuelByCode(duelCode);
-  if (!existing) throw new Error('Duel topilmadi.');
-  if (String(existing.creatorId) === String(user.id)) {
-    throw new Error('O‘zingiz yaratgan duelga ikkinchi o‘yinchi sifatida kira olmaysiz.');
-  }
-  if (existing.opponentId && String(existing.opponentId) !== String(user.id)) {
-    throw new Error('Bu duelga allaqachon boshqa foydalanuvchi qo‘shilgan.');
-  }
-
-  const duel = attachDuelOpponent(duelCode, user);
-  if (!duel) throw new Error('Duelga qo‘shilib bo‘lmadi.');
-  if (!duel.testIndex) throw new Error('Duel buzilgan.');
-
-  const quiz = await startMiniAppQuiz(user, duel.testIndex, { duelCode: duel.code });
-  return {
-    duelCode: duel.code,
-    creatorId: duel.creatorId,
-    opponentName: user.first_name || user.username || String(user.id),
-    quiz
   };
 }
 
@@ -338,7 +259,6 @@ function finishMiniAppQuiz(userPayload, payload = {}) {
     durationSeconds,
     isDailyChallenge: Boolean(session.isDailyChallenge)
   });
-  const duel = session.duelCode ? recordDuelResult(session.duelCode, user.id, { percent, durationSeconds }) : null;
   finishQuizSession(quizId);
   const profile = getProfileView(user);
   const previousBadges = new Set((before.badges || []).map((badge) => badge.id));
@@ -347,13 +267,6 @@ function finishMiniAppQuiz(userPayload, payload = {}) {
     allTime: before.allTimeRank && profile.allTimeRank && profile.allTimeRank < before.allTimeRank,
     weekly: before.weeklyRank && profile.weeklyRank && profile.weeklyRank < before.weeklyRank
   };
-  const duelSummary = duel
-    ? {
-        ...duel,
-        result: formatDuelStatus(duel.status, String(duel.creatorId) === String(user.id))
-      }
-    : null;
-
   return {
     testIndex: session.testIndex,
     testName: session.testName,
@@ -364,22 +277,18 @@ function finishMiniAppQuiz(userPayload, payload = {}) {
     profile,
     leaderboard: getLeaderboard(),
     analytics: isAdminUser(user) ? getMiniAppAnalytics() : null,
-    duel: duelSummary,
     shareCard: {
       title: session.testName,
       percent,
       correct,
       wrong,
       level: profile.level?.name || 'Bronze',
-      challengeCompletedToday: profile.challengeCompletedToday,
-      duelTitle: duelSummary?.result?.title || '',
-      duelMedal: duelSummary?.result?.medal || ''
+      challengeCompletedToday: profile.challengeCompletedToday
     },
     notifications: {
       unlockedBadges,
       challengeCompleted: Boolean(session.isDailyChallenge),
       challengeStreak: profile.challengeStreak > before.challengeStreak ? profile.challengeStreak : null,
-      duelOutcome: duelSummary?.result || null,
       rankImproved,
       newLevel: profile.level?.name !== before.level?.name ? profile.level : null
     }
@@ -397,8 +306,6 @@ module.exports = {
   getMiniAppBootPayload,
   startMiniAppQuiz,
   startWeakWordsQuiz,
-  createMiniAppDuel,
-  joinMiniAppDuel,
   saveMiniAppQuizProgress,
   finishMiniAppQuiz,
   updateMiniAppProfile,

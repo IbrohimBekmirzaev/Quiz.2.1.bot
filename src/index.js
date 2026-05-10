@@ -12,8 +12,6 @@ const {
   getMiniAppBootPayload,
   startMiniAppQuiz,
   startWeakWordsQuiz,
-  createMiniAppDuel,
-  joinMiniAppDuel,
   saveMiniAppQuizProgress,
   finishMiniAppQuiz,
   updateMiniAppProfile,
@@ -159,10 +157,6 @@ async function sendMiniAppSyncMessages(userId, notifications = {}) {
     messages.push(`🎯 Daily challenge streak: ${notifications.challengeStreak} kun.`);
   }
 
-  if (notifications.duelOutcome?.title) {
-    messages.push(`${notifications.duelOutcome.medal || '⚔️'} ${notifications.duelOutcome.title}`);
-  }
-
   if (notifications.rankImproved?.allTime) {
     messages.push('🚀 All-time reytingingiz yaxshilandi.');
   }
@@ -277,49 +271,6 @@ async function handleMiniAppApi(req, res, requestUrl) {
     return;
   }
 
-  if (requestUrl.pathname === '/api/mini-app/duel/create') {
-    const data = await createMiniAppDuel(user, payload.testIndex);
-    await logQuizStarted(bot, virtualMsg, `${data.quiz.test.name} [Duel]`, 'mini_app');
-    try {
-      await bot.sendMessage(
-        user.id,
-        `⚔️ Duel yaratildi.\n\n📚 Test: ${data.quiz.test.name}\n🔑 Kod: ${data.duelCode}\n🌐 Mini App: ${config.miniAppUrl}`
-      );
-    } catch (error) {
-      console.error('Duel create DM yuborilmadi:', error.message);
-    }
-    sendJson(res, 200, { ok: true, data });
-    return;
-  }
-
-  if (requestUrl.pathname === '/api/mini-app/duel/join') {
-    const data = await joinMiniAppDuel(user, payload.duelCode);
-    await logQuizStarted(bot, virtualMsg, `${data.quiz.test.name} [Duel]`, 'mini_app');
-    if (data.quiz?.duelCode) {
-      try {
-        const duelInfo = data.quiz.duelCode;
-        await bot.sendMessage(
-          user.id,
-          `⚔️ Duelga qo‘shildingiz.\n\n🔑 Kod: ${duelInfo}\n📚 Test: ${data.quiz.test.name}`
-        );
-      } catch (error) {
-        console.error('Duel join DM yuborilmadi:', error.message);
-      }
-    }
-    if (data.creatorId && String(data.creatorId) !== String(user.id)) {
-      try {
-        await bot.sendMessage(
-          data.creatorId,
-          `⚔️ Duelingizga raqib qo‘shildi.\n\n👤 ${data.opponentName || 'Foydalanuvchi'}\n📚 Test: ${data.quiz.test.name}\n🔑 Kod: ${data.duelCode}`
-        );
-      } catch (error) {
-        console.error('Duel creator notify yuborilmadi:', error.message);
-      }
-    }
-    sendJson(res, 200, { ok: true, data });
-    return;
-  }
-
   if (requestUrl.pathname === '/api/mini-app/quiz/progress') {
     const data = saveMiniAppQuizProgress(user, payload);
     sendJson(res, 200, { ok: true, data });
@@ -330,20 +281,6 @@ async function handleMiniAppApi(req, res, requestUrl) {
     const data = await finishMiniAppQuiz(user, payload);
     await logQuizFinished(bot, virtualMsg, data.testName, data.correct, data.wrong, 'mini_app');
     await sendMiniAppSyncMessages(user.id, data.notifications);
-    if (data.duel?.status && ['creator_won', 'opponent_won', 'draw'].includes(data.duel.status)) {
-      const recipients = [data.duel.creatorId, data.duel.opponentId].filter(Boolean);
-      for (const recipient of recipients) {
-        if (String(recipient) === String(user.id)) continue;
-        try {
-          await bot.sendMessage(
-            recipient,
-            `${data.duel.result?.medal || '⚔️'} Duel yakunlandi.\n\n📚 ${data.testName}\n${data.duel.result?.title || 'Natija tayyor'}`
-          );
-        } catch (error) {
-          console.error('Duel result DM yuborilmadi:', error.message);
-        }
-      }
-    }
     sendJson(res, 200, { ok: true, data });
     return;
   }

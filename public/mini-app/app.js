@@ -37,7 +37,6 @@ const state = {
   onboardingStep: 0,
   avatarCropSource: null,
   avatarCropScale: 1,
-  duelCodeInput: '',
   toast: null,
   rankCelebration: null
 };
@@ -180,8 +179,7 @@ function getChallengeTimeLeft() {
 }
 
 function buildShareText(result) {
-  const duelLine = result.duel?.result ? `\n${result.duel.result.medal} ${result.duel.result.title}` : '';
-  return `📊 ${result.testName}\n✅ ${result.correct}\n❌ ${result.wrong}\n📈 ${result.percent}%${duelLine}`;
+  return `📊 ${result.testName}\n✅ ${result.correct}\n❌ ${result.wrong}\n📈 ${result.percent}%`;
 }
 
 async function generateResultShareFile(result) {
@@ -191,9 +189,7 @@ async function generateResultShareFile(result) {
     correct: result.correct,
     wrong: result.wrong,
     level: state.boot?.user?.level?.name || 'Bronze',
-    challengeCompletedToday: false,
-    duelTitle: result.duel?.result?.title || '',
-    duelMedal: result.duel?.result?.medal || ''
+    challengeCompletedToday: false
   };
 
   const canvas = document.createElement('canvas');
@@ -247,18 +243,6 @@ async function generateResultShareFile(result) {
     ctx.fillStyle = panel.color;
     ctx.font = '800 82px Manrope, sans-serif';
     ctx.fillText(panel.value, panel.x + 28, panel.y + 142);
-  }
-
-  if (card.duelTitle) {
-    ctx.fillStyle = 'rgba(255,255,255,0.05)';
-    ctx.strokeStyle = 'rgba(255,255,255,0.10)';
-    ctx.beginPath();
-    ctx.roundRect(72, 580, 936, 170, 32);
-    ctx.fill();
-    ctx.stroke();
-    ctx.fillStyle = '#f2f7ff';
-    ctx.font = '800 46px Manrope, sans-serif';
-    ctx.fillText(`${card.duelMedal || '⚔️'} ${card.duelTitle}`, 106, 655);
   }
 
   if (card.challengeCompletedToday) {
@@ -393,21 +377,6 @@ function renderQuizList(tests) {
         <button class="button" data-action="start-weak-quiz">Boshlash</button>
       </div>
     ` : ''}
-    <div class="duel-card">
-      <div>
-        <div class="badge">Duel / Battle</div>
-        <strong>Do‘stingiz bilan bellashing</strong>
-        <div class="muted">Kod yarating yoki mavjud duel kodini kiriting.</div>
-      </div>
-      <div class="duel-actions">
-        <input class="input duel-input" id="duelCodeInput" placeholder="DUEL CODE" value="${escapeHtml(state.duelCodeInput)}" />
-        <div class="row">
-          <button class="secondary-button" data-action="join-duel">Qo‘shilish</button>
-          <button class="button" data-action="create-duel">Duel yaratish</button>
-          ${state.duelCodeInput ? '<button class="secondary-button" data-action="share-duel">Kodni ulashish</button>' : ''}
-        </div>
-      </div>
-    </div>
     <div class="section-head">
       <div>
         <div class="badge">Test Selection</div>
@@ -453,19 +422,6 @@ function renderActiveQuiz() {
           <h2 class="runner-title">${escapeHtml(active.result.testName)}</h2>
         </div>
 
-        ${active.result.duel?.result ? `
-          <div class="duel-result-banner ${active.result.duel.status || ''}">
-            <div class="duel-result-spark spark-a"></div>
-            <div class="duel-result-spark spark-b"></div>
-            <div class="duel-result-spark spark-c"></div>
-            <div class="duel-result-medal">${active.result.duel.result.medal}</div>
-            <div>
-              <strong>${escapeHtml(active.result.duel.result.title)}</strong>
-              <div class="muted">${escapeHtml(active.result.duel.result.subtitle)}</div>
-            </div>
-          </div>
-        ` : ''}
-
         ${active.result.profile?.challengeCompletedToday ? `
           <div class="challenge-done-banner">⚡ Daily challenge bajarildi • streak ${active.result.profile.challengeStreak || 0} kun</div>
         ` : ''}
@@ -485,12 +441,10 @@ function renderActiveQuiz() {
               <strong>${active.result.percent}%</strong>
             </article>
           </div>
-          ${active.result.duel?.status ? `<div class="muted" style="margin-top:12px">Duel holati: ${escapeHtml(active.result.duel.status)}</div>` : ''}
           <div class="row premium-result-actions">
             <button class="secondary-button" data-action="restart-test" data-test-id="${active.test.id}">Qayta</button>
             ${nextTestId ? `<button class="button" data-action="start-quiz" data-test-id="${nextTestId}">Keyingi test</button>` : ''}
             <button class="secondary-button" data-action="share-result">Ulashish</button>
-            ${active.result.duel?.result ? '<button class="button" data-action="share-duel-result">Duel kartasi</button>' : ''}
           </div>
         </div>
       </section>
@@ -654,87 +608,84 @@ function renderProfileSection(profile) {
     ? Math.round((profile.totalCorrect / (profile.totalCorrect + profile.totalWrong)) * 100)
     : 0;
   const levelProgress = Math.max(0, Math.min(100, Number(profile.level?.progress || 0)));
+  const rankText = profile.allTimeRank ? `#${profile.allTimeRank}` : '-';
 
   return `
     <section class="section ${state.tab === 'profile' ? '' : 'hidden'}" id="tab-profile">
       <div class="section-head">
         <div>
-          <div class="badge">User Profile</div>
-          <h2>My Profile</h2>
-          <p>Profilingizni bezang va natijalaringizni kuzatib boring.</p>
+          <div class="badge">Profile</div>
+          <h2>Mening Profilim</h2>
+          <p>Natijalar, daraja va sozlamalar bitta joyda.</p>
         </div>
       </div>
-      <div class="profile-hero-card">
-        <div class="avatar profile-hero-avatar">${avatarPreview ? `<img src="${avatarPreview}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">` : initials(profile.displayName)}</div>
-        <div>
-          <div class="badge">User Profile</div>
+
+      <div class="profile-clean-hero">
+        <div class="avatar profile-clean-avatar">${avatarPreview ? `<img src="${avatarPreview}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">` : initials(profile.displayName)}</div>
+        <div class="profile-clean-main">
+          <div class="badge">${escapeHtml(profile.level?.name || 'Bronze')}</div>
           <h3>${escapeHtml(profile.displayName)}</h3>
           <p>${escapeHtml(profile.username)} • ID ${escapeHtml(profile.id)}</p>
-          <div class="profile-level-row">
-            <span>${escapeHtml(profile.level?.name || 'Bronze')}</span>
-            <span>${levelProgress}%</span>
+          <div class="profile-level-row clean">
+            <span>Level progress</span>
+            <strong>${levelProgress}%</strong>
           </div>
           <div class="profile-level-bar"><span style="width:${levelProgress}%"></span></div>
         </div>
       </div>
-      <div class="profile-editor">
-        <div class="profile-avatar-panel">
-          <div class="avatar profile-large-avatar">${avatarPreview ? `<img src="${avatarPreview}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">` : initials(profile.displayName)}</div>
-          <input class="input" id="displayNameInput" value="${escapeHtml(profile.displayName)}" placeholder="Ko‘rinadigan nom" />
-          <input type="file" id="avatarFileInput" accept="image/*" class="hidden-file-input" />
-          <label class="reminder-toggle">
-            <input type="checkbox" id="remindersEnabledInput" ${profile.remindersEnabled ? 'checked' : ''} />
-            <span>Eslatmalarni yoqish</span>
-          </label>
-          <div class="row">
-            <button class="secondary-button" data-action="pick-avatar">Avatar yuklash</button>
-            <button class="button" data-action="save-profile">Saqlash</button>
-            ${avatarPreview ? '<button class="secondary-button" data-action="remove-avatar">Avatarni olib tashlash</button>' : ''}
+
+      <div class="profile-overview-grid">
+        <article class="stat-card profile-stat featured"><small class="muted">Jami ball</small><strong>${profile.points}</strong></article>
+        <article class="stat-card profile-stat accuracy"><small class="muted">Aniqlik</small><strong>${accuracy}%</strong></article>
+        <article class="stat-card profile-stat"><small class="muted">Reyting</small><strong>${rankText}</strong></article>
+        <article class="stat-card profile-stat"><small class="muted">Urinishlar</small><strong>${profile.attempts}</strong></article>
+      </div>
+
+      <div class="profile-panel">
+        <div class="profile-panel-head">
+          <div>
+            <div class="badge">Sozlamalar</div>
+            <strong>Profil ko‘rinishi</strong>
           </div>
-          <div class="profile-helper">PNG yoki JPG rasm tanlashingiz mumkin.</div>
         </div>
-        <div class="profile-scoreboard">
-          <article class="stat-card profile-stat featured"><small class="muted">All-time ball</small><strong>${profile.points}</strong></article>
-          <article class="stat-card profile-stat accuracy"><small class="muted">Aniqlik</small><strong>${accuracy}%</strong></article>
-          <article class="stat-card profile-stat"><small class="muted">Weekly ball</small><strong>${profile.weeklyPoints}</strong></article>
-          <article class="stat-card profile-stat"><small class="muted">Urinishlar</small><strong>${profile.attempts}</strong></article>
-          <article class="stat-card profile-stat"><small class="muted">All-time rank</small><strong>#${profile.allTimeRank || '-'}</strong></article>
-          <article class="stat-card profile-stat"><small class="muted">Best score</small><strong>${profile.bestScore}%</strong></article>
-          <article class="stat-card profile-stat"><small class="muted">Level</small><strong>${profile.level?.name || 'Bronze'}</strong></article>
-          <article class="stat-card profile-stat"><small class="muted">Duel</small><strong>${profile.duelWins}W / ${profile.duelLosses}L</strong></article>
-          <article class="stat-card profile-stat"><small class="muted">Jami savol</small><strong>${profile.totalQuestions || 0}</strong></article>
-          <article class="stat-card profile-stat"><small class="muted">Challenge streak</small><strong>${profile.challengeStreak || 0}</strong></article>
+        <input class="input" id="displayNameInput" value="${escapeHtml(profile.displayName)}" placeholder="Ko‘rinadigan nom" />
+        <input type="file" id="avatarFileInput" accept="image/*" class="hidden-file-input" />
+        <label class="reminder-toggle">
+          <input type="checkbox" id="remindersEnabledInput" ${profile.remindersEnabled ? 'checked' : ''} />
+          <span>Eslatmalarni yoqish</span>
+        </label>
+        <div class="row">
+          <button class="secondary-button" data-action="pick-avatar">Avatar yuklash</button>
+          <button class="button" data-action="save-profile">Saqlash</button>
+          ${avatarPreview ? '<button class="secondary-button" data-action="remove-avatar">Avatarni olib tashlash</button>' : ''}
         </div>
       </div>
+
       <div class="profile-extras">
         <section class="extra-card">
-          <div class="badge">Streak</div>
+          <div class="badge">Faollik</div>
           <div class="extra-stat-row">
             <div><small class="muted">Hozirgi</small><strong>${profile.streakDays} kun</strong></div>
             <div><small class="muted">Eng yaxshi</small><strong>${profile.bestStreak} kun</strong></div>
-            <div><small class="muted">Challenge</small><strong>${profile.challengeCompletions}</strong></div>
+            <div><small class="muted">Jami savol</small><strong>${profile.totalQuestions || 0}</strong></div>
           </div>
-          <div class="muted profile-sub-note">Daily challenge streak: ${profile.challengeStreak || 0} • Best: ${profile.bestChallengeStreak || 0}</div>
+          <div class="muted profile-sub-note">Challenge streak: ${profile.challengeStreak || 0} • Eng yaxshi: ${profile.bestChallengeStreak || 0}</div>
         </section>
+
         <section class="extra-card">
-          <div class="badge">Highlights</div>
+          <div class="badge">Eng yaxshi natija</div>
           <div class="history-list">
             ${profile.bestAttempt ? `
               <div class="history-item">
-                <strong>Eng yaxshi test: ${escapeHtml(profile.bestAttempt.testName)}</strong>
+                <strong>${escapeHtml(profile.bestAttempt.testName)}</strong>
                 <div class="muted">📈 ${profile.bestAttempt.percent}% • ✅ ${profile.bestAttempt.correct} • ❌ ${profile.bestAttempt.wrong}</div>
               </div>
             ` : '<div class="muted">Eng yaxshi test hali yo‘q</div>'}
-            ${profile.lastDuel ? `
-              <div class="history-item">
-                <strong>Oxirgi duel: ${escapeHtml(profile.lastDuel.testName)}</strong>
-                <div class="muted">⚔️ ${escapeHtml(profile.lastDuel.status)} • ${escapeHtml(profile.lastDuel.code)}</div>
-              </div>
-            ` : '<div class="muted">Oxirgi duel hali yo‘q</div>'}
           </div>
         </section>
+
         <section class="extra-card">
-          <div class="badge">Achievements</div>
+          <div class="badge">Yutuqlar</div>
           <div class="badge-grid">
             ${profile.badges?.length ? profile.badges.map((badge) => `
               <div class="achievement-pill">
@@ -744,6 +695,7 @@ function renderProfileSection(profile) {
             `).join('') : '<div class="muted">Hali badge yo‘q</div>'}
           </div>
         </section>
+
         <section class="extra-card">
           <div class="badge">Oxirgi natijalar</div>
           <div class="history-list">
@@ -755,8 +707,9 @@ function renderProfileSection(profile) {
             `).join('') : '<div class="muted">Hali natijalar yo‘q</div>'}
           </div>
         </section>
+
         <section class="extra-card">
-          <div class="badge">Weak Words</div>
+          <div class="badge">Mustahkamlash</div>
           <div class="weak-list">
             ${profile.weakWords?.length ? profile.weakWords.map((item) => `
               <div class="weak-item">
@@ -766,7 +719,9 @@ function renderProfileSection(profile) {
               </div>
             `).join('') : '<div class="muted">Weak words hali yo‘q</div>'}
           </div>
+          ${profile.weakWords?.length ? '<button class="secondary-button weak-retry-button" data-action="start-weak-quiz">Xato so‘zlardan test</button>' : ''}
         </section>
+
         ${state.boot?.analytics ? `
           <section class="extra-card analytics-card">
             <div class="badge">Admin Analytics</div>
@@ -804,7 +759,6 @@ function renderAdminSection() {
         <article class="stat-card profile-stat"><small class="muted">Jami profil</small><strong>${analytics.totalProfiles}</strong></article>
         <article class="stat-card profile-stat"><small class="muted">Jami urinish</small><strong>${analytics.totalAttempts}</strong></article>
         <article class="stat-card profile-stat"><small class="muted">Open → Quiz</small><strong>${analytics.conversionRate}%</strong></article>
-        <article class="stat-card profile-stat"><small class="muted">Duel</small><strong>${analytics.duelStats?.finished || 0}/${analytics.duelStats?.total || 0}</strong></article>
       </div>
       ${analytics.topTests?.length ? `
         <div class="extra-card">
@@ -965,8 +919,7 @@ async function startQuiz(testId, options = {}) {
   const data = await api('/api/mini-app/quiz/start', {
     user: getTelegramUser(),
     testIndex: Number(testId),
-    isDailyChallenge: Boolean(options.isDailyChallenge),
-    duelCode: options.duelCode || ''
+    isDailyChallenge: Boolean(options.isDailyChallenge)
   });
 
   state.currentQuiz = {
@@ -975,8 +928,7 @@ async function startQuiz(testId, options = {}) {
     questions: data.questions,
     currentIndex: 0,
     startedAt: Date.now(),
-    isDailyChallenge: Boolean(options.isDailyChallenge),
-    duelCode: options.duelCode || ''
+    isDailyChallenge: Boolean(options.isDailyChallenge)
   };
   state.selectedAnswers = new Array(data.questions.length).fill(null);
   state.result = null;
@@ -1000,59 +952,6 @@ async function startWeakQuiz() {
     isDailyChallenge: false
   };
   state.selectedAnswers = new Array(data.questions.length).fill(null);
-  state.result = null;
-  state.tab = 'quiz';
-  state.timerNow = Date.now();
-  state.autoAdvanceLock = false;
-  state.boot.activeQuiz = null;
-  state.rankCelebration = null;
-  startTimer();
-  render();
-}
-
-async function createDuel() {
-  const testId = state.boot?.tests?.[0]?.id || 1;
-  const data = await api('/api/mini-app/duel/create', {
-    user: getTelegramUser(),
-    testIndex: testId
-  });
-
-  state.duelCodeInput = data.duelCode;
-  if (navigator.share) {
-    try {
-      await navigator.share({ text: data.shareText });
-    } catch (_) {
-      // ignore
-    }
-  }
-
-  state.currentQuiz = {
-    ...data.quiz,
-    currentIndex: 0
-  };
-  state.selectedAnswers = new Array(data.quiz.questions.length).fill(null);
-  state.result = null;
-  state.tab = 'quiz';
-  state.timerNow = Date.now();
-  state.autoAdvanceLock = false;
-  state.boot.activeQuiz = null;
-  state.rankCelebration = null;
-  startTimer();
-  render();
-}
-
-async function joinDuel() {
-  if (!state.duelCodeInput.trim()) return;
-  const data = await api('/api/mini-app/duel/join', {
-    user: getTelegramUser(),
-    duelCode: state.duelCodeInput.trim()
-  });
-
-  state.currentQuiz = {
-    ...data.quiz,
-    currentIndex: 0
-  };
-  state.selectedAnswers = new Array(data.quiz.questions.length).fill(null);
   state.result = null;
   state.tab = 'quiz';
   state.timerNow = Date.now();
@@ -1274,37 +1173,6 @@ document.addEventListener('click', async (event) => {
       return;
     }
 
-    if (action === 'create-duel') {
-      haptic('impact');
-      await createDuel();
-      showToast('Duel yaratildi', 'success');
-      return;
-    }
-
-    if (action === 'join-duel') {
-      haptic('impact');
-      await joinDuel();
-      showToast('Duelga qo‘shildingiz', 'success');
-      return;
-    }
-
-    if (action === 'share-duel') {
-      const code = state.duelCodeInput.trim();
-      if (!code) return;
-      const text = `⚔️ Menga qarshi duelga qo‘shil!\n\nKod: ${code}\nMini App: ${window.location.origin}/mini-app`;
-      if (navigator.share) {
-        try {
-          await navigator.share({ text });
-        } catch (_) {
-          // ignore
-        }
-      } else if (navigator.clipboard) {
-        await navigator.clipboard.writeText(text);
-      }
-      showToast('Duel kodi ulashishga tayyor', 'success');
-      return;
-    }
-
     if (action === 'leave-quiz') {
       await persistQuizProgress();
       leaveQuiz();
@@ -1355,37 +1223,6 @@ document.addEventListener('click', async (event) => {
         await navigator.clipboard.writeText(text);
       }
       showToast('Natija ulashishga tayyor', 'success');
-      return;
-    }
-
-    if (action === 'share-duel-result') {
-      const result = state.currentQuiz?.result;
-      if (!result?.duel?.result) return;
-      const duelText = [
-        `⚔️ Duel natijasi`,
-        `📚 ${result.testName}`,
-        `${result.duel.result.medal} ${result.duel.result.title}`,
-        `✅ ${result.correct} | ❌ ${result.wrong} | 📈 ${result.percent}%`
-      ].join('\n');
-      const file = await generateResultShareFile(result);
-
-      if (file && navigator.canShare?.({ files: [file] }) && navigator.share) {
-        try {
-          await navigator.share({ files: [file], text: duelText });
-        } catch (_) {
-          // ignore
-        }
-      } else if (navigator.share) {
-        try {
-          await navigator.share({ text: duelText });
-        } catch (_) {
-          // ignore
-        }
-      } else if (navigator.clipboard) {
-        await navigator.clipboard.writeText(duelText);
-      }
-
-      showToast('Duel kartasi ulashishga tayyor', 'success');
       return;
     }
 
@@ -1466,11 +1303,6 @@ document.addEventListener('change', async (event) => {
 document.addEventListener('input', (event) => {
   const target = event.target;
   if (!(target instanceof HTMLInputElement)) return;
-
-  if (target.id === 'duelCodeInput') {
-    state.duelCodeInput = target.value.toUpperCase();
-    return;
-  }
 
   if (target.dataset.action === 'crop-scale') {
     state.avatarCropScale = Number(target.value);
