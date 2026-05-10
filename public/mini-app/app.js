@@ -17,7 +17,10 @@ const state = {
   autoAdvanceLock: false,
   profileAvatarDraft: null,
   testSearch: '',
-  onboardingStep: 0
+  onboardingStep: 0,
+  avatarCropSource: null,
+  avatarCropScale: 1,
+  duelCodeInput: ''
 };
 
 let timerHandle = null;
@@ -54,6 +57,29 @@ async function api(path, payload = {}) {
   return json.data;
 }
 
+function haptic(kind = 'selection') {
+  const apiRef = tg?.HapticFeedback;
+  if (!apiRef) return;
+
+  try {
+    if (kind === 'success') {
+      apiRef.notificationOccurred('success');
+      return;
+    }
+    if (kind === 'error') {
+      apiRef.notificationOccurred('error');
+      return;
+    }
+    if (kind === 'impact') {
+      apiRef.impactOccurred('light');
+      return;
+    }
+    apiRef.selectionChanged();
+  } catch (_) {
+    // no-op
+  }
+}
+
 function initials(name = 'U') {
   return name
     .split(/\s+/)
@@ -73,35 +99,18 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
+function formatTime(seconds) {
+  const mins = String(Math.floor(seconds / 60)).padStart(2, '0');
+  const secs = String(seconds % 60).padStart(2, '0');
+  return `${mins}:${secs}`;
+}
+
 function getProfile() {
   return state.boot?.user || null;
 }
 
 function getCurrentUserId() {
   return String(getProfile()?.id || '');
-}
-
-function haptic(kind = 'selection') {
-  const api = tg?.HapticFeedback;
-  if (!api) return;
-
-  try {
-    if (kind === 'success') {
-      api.notificationOccurred('success');
-      return;
-    }
-    if (kind === 'error') {
-      api.notificationOccurred('error');
-      return;
-    }
-    if (kind === 'impact') {
-      api.impactOccurred('light');
-      return;
-    }
-    api.selectionChanged();
-  } catch (_) {
-    // ignore
-  }
 }
 
 function getLeaderboardItems() {
@@ -112,8 +121,7 @@ function getLeaderboardItems() {
 }
 
 function getCurrentUserLeaderboardItem() {
-  const currentUserId = getCurrentUserId();
-  return getLeaderboardItems().find((item) => item.id === currentUserId) || null;
+  return getLeaderboardItems().find((item) => item.id === getCurrentUserId()) || null;
 }
 
 function getNextTestId(currentTestIndex) {
@@ -130,10 +138,13 @@ function getFilteredTests() {
   return tests.filter((test) => String(test.name || '').toLowerCase().includes(query));
 }
 
-function formatTime(seconds) {
-  const mins = String(Math.floor(seconds / 60)).padStart(2, '0');
-  const secs = String(seconds % 60).padStart(2, '0');
-  return `${mins}:${secs}`;
+function getChallengeTimeLeft() {
+  const endsAt = state.boot?.dailyChallenge?.endsAt;
+  if (!endsAt) return '';
+  const diff = Math.max(0, new Date(endsAt).getTime() - Date.now());
+  const hours = Math.floor(diff / 3600000);
+  const minutes = Math.floor((diff % 3600000) / 60000);
+  return `${hours} soat ${minutes} daqiqa qoldi`;
 }
 
 function getQuizStats() {
@@ -175,10 +186,9 @@ function startTimer() {
 }
 
 function stopTimer() {
-  if (timerHandle) {
-    clearInterval(timerHandle);
-    timerHandle = null;
-  }
+  if (!timerHandle) return;
+  clearInterval(timerHandle);
+  timerHandle = null;
 }
 
 function renderHeader(profile) {
@@ -187,7 +197,7 @@ function renderHeader(profile) {
       <div class="hero-head">
         <div>
           <div class="badge">Telegram Quiz Mini App</div>
-          <h1>${state.tab === 'rating' ? 'Rating Board' : state.tab === 'profile' ? 'My Profile' : 'Quiz Arena'}</h1>
+          <h1>${state.tab === 'rating' ? 'Rating Board' : state.tab === 'profile' ? 'My Profile' : state.tab === 'admin' ? 'Admin Hub' : 'Quiz Arena'}</h1>
           <p>Darslarni tanlang, quiz yeching va reytingda ko‘tariling.</p>
         </div>
         <button class="theme-toggle" data-action="toggle-theme">${state.theme === 'dark' ? '☀️' : '🌙'}</button>
@@ -197,7 +207,7 @@ function renderHeader(profile) {
           <div class="avatar">${profile.avatarUrl ? `<img src="${profile.avatarUrl}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">` : initials(profile.displayName)}</div>
           <div>
             <strong>${escapeHtml(profile.displayName)}</strong>
-            <small>ID ${escapeHtml(profile.id)}</small>
+            <small>${escapeHtml(profile.level?.name || 'Bronze')} • ID ${escapeHtml(profile.id)}</small>
           </div>
         </div>
         <div class="counter-card">
@@ -212,6 +222,8 @@ function renderHeader(profile) {
 function renderQuizList(tests) {
   const dailyChallenge = state.boot?.dailyChallenge;
   const resumableQuiz = state.boot?.activeQuiz;
+  const weakWords = state.boot?.user?.weakWords || [];
+
   return `
     ${resumableQuiz ? `
       <div class="resume-card">
@@ -229,10 +241,35 @@ function renderQuizList(tests) {
           <div class="badge">Daily Challenge</div>
           <strong>${escapeHtml(dailyChallenge.name)}</strong>
           <div class="muted">${dailyChallenge.questionCount} ta savol • bugungi maxsus test</div>
+          <div class="muted">${getChallengeTimeLeft()}</div>
         </div>
         <button class="button" data-action="start-daily-challenge" data-test-id="${dailyChallenge.id}">Boshlash</button>
       </div>
     ` : ''}
+    ${weakWords.length ? `
+      <div class="resume-card">
+        <div>
+          <div class="badge">Weak Words Retry</div>
+          <strong>Xato qilingan so‘zlar testi</strong>
+          <div class="muted">${weakWords.length} ta zaif so‘zni qayta mustahkamlang</div>
+        </div>
+        <button class="button" data-action="start-weak-quiz">Boshlash</button>
+      </div>
+    ` : ''}
+    <div class="duel-card">
+      <div>
+        <div class="badge">Duel / Battle</div>
+        <strong>Do‘stingiz bilan bellashing</strong>
+        <div class="muted">Kod yarating yoki mavjud duel kodini kiriting.</div>
+      </div>
+      <div class="duel-actions">
+        <input class="input duel-input" id="duelCodeInput" placeholder="DUEL CODE" value="${escapeHtml(state.duelCodeInput)}" />
+        <div class="row">
+          <button class="secondary-button" data-action="join-duel">Qo‘shilish</button>
+          <button class="button" data-action="create-duel">Duel yaratish</button>
+        </div>
+      </div>
+    </div>
     <div class="section-head">
       <div>
         <div class="badge">Test Selection</div>
@@ -241,7 +278,7 @@ function renderQuizList(tests) {
       </div>
       <button class="secondary-button" data-action="refresh">Darslarni yangilash</button>
     </div>
-    <input class="input" id="testSearchInput" data-action="search-tests" placeholder="Test qidirish..." value="${escapeHtml(state.testSearch)}" />
+    <input class="input" data-action="search-tests" placeholder="Test qidirish..." value="${escapeHtml(state.testSearch)}" />
     <div class="test-list">
       ${tests.map((test) => `
         <article class="quiz-card" data-action="start-quiz" data-test-id="${test.id}">
@@ -249,7 +286,7 @@ function renderQuizList(tests) {
             <div class="test-index">${String(test.id).padStart(2, '0')}</div>
             <div>
               <strong>${escapeHtml(test.name)}</strong>
-              <div class="muted">${test.questionCount} ta savol bazasi</div>
+              <div class="muted">${test.questionCount} ta savol bazasi${test.isDailyChallenge ? ' • Daily' : ''}</div>
             </div>
             <button class="quiz-start-button" data-action="start-quiz" data-test-id="${test.id}">Boshlash</button>
           </div>
@@ -294,9 +331,11 @@ function renderActiveQuiz() {
               <strong>${active.result.percent}%</strong>
             </article>
           </div>
+          ${active.result.duel?.status ? `<div class="muted" style="margin-top:12px">Duel holati: ${escapeHtml(active.result.duel.status)}</div>` : ''}
           <div class="row premium-result-actions">
             <button class="secondary-button" data-action="restart-test" data-test-id="${active.test.id}">Qayta</button>
             ${nextTestId ? `<button class="button" data-action="start-quiz" data-test-id="${nextTestId}">Keyingi test</button>` : ''}
+            <button class="secondary-button" data-action="share-result">Ulashish</button>
           </div>
         </div>
       </section>
@@ -373,24 +412,10 @@ function renderActiveQuiz() {
   `;
 }
 
-function renderQuizResult(result) {
-  return `
-    <div class="result-panel">
-      <div class="badge">Natija</div>
-      <strong style="display:block;margin-top:10px">${escapeHtml(result.testName)}</strong>
-      <div style="margin-top: 12px">✅ To‘g‘ri: ${result.correct}</div>
-      <div>❌ Xato: ${result.wrong}</div>
-      <div>📈 Foiz: ${result.percent}%</div>
-    </div>
-  `;
-}
-
 function renderQuizSection() {
-  const tests = getFilteredTests();
-
   return `
     <section class="section ${state.currentQuiz ? 'runner-shell' : ''} ${state.tab === 'quiz' ? '' : 'hidden'}" id="tab-quiz">
-      ${state.currentQuiz ? renderActiveQuiz() : renderQuizList(tests)}
+      ${state.currentQuiz ? renderActiveQuiz() : renderQuizList(getFilteredTests())}
     </section>
   `;
 }
@@ -469,7 +494,7 @@ function renderRatingSection() {
 }
 
 function renderProfileSection(profile) {
-  const avatarPreview = state.profileAvatarDraft || profile.avatarUrl || '';
+  const avatarPreview = state.profileAvatarDraft !== null ? state.profileAvatarDraft : (profile.avatarUrl || '');
   const accuracy = profile.totalCorrect + profile.totalWrong
     ? Math.round((profile.totalCorrect / (profile.totalCorrect + profile.totalWrong)) * 100)
     : 0;
@@ -514,6 +539,8 @@ function renderProfileSection(profile) {
           <article class="stat-card profile-stat"><small class="muted">Urinishlar</small><strong>${profile.attempts}</strong></article>
           <article class="stat-card profile-stat"><small class="muted">All-time rank</small><strong>#${profile.allTimeRank || '-'}</strong></article>
           <article class="stat-card profile-stat"><small class="muted">Best score</small><strong>${profile.bestScore}%</strong></article>
+          <article class="stat-card profile-stat"><small class="muted">Level</small><strong>${profile.level?.name || 'Bronze'}</strong></article>
+          <article class="stat-card profile-stat"><small class="muted">Duel</small><strong>${profile.duelWins}W / ${profile.duelLosses}L</strong></article>
         </div>
       </div>
       <div class="profile-extras">
@@ -577,40 +604,28 @@ function renderProfileSection(profile) {
   `;
 }
 
-function resizeImageFile(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const image = new Image();
-      image.onload = () => {
-        const size = 256;
-        const canvas = document.createElement('canvas');
-        canvas.width = size;
-        canvas.height = size;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          reject(new Error('Canvas yaratilmadi.'));
-          return;
-        }
-
-        ctx.fillStyle = '#10203b';
-        ctx.fillRect(0, 0, size, size);
-
-        const scale = Math.max(size / image.width, size / image.height);
-        const width = image.width * scale;
-        const height = image.height * scale;
-        const x = (size - width) / 2;
-        const y = (size - height) / 2;
-
-        ctx.drawImage(image, x, y, width, height);
-        resolve(canvas.toDataURL('image/jpeg', 0.88));
-      };
-      image.onerror = () => reject(new Error('Rasm o‘qilmadi.'));
-      image.src = String(reader.result || '');
-    };
-    reader.onerror = () => reject(new Error('Fayl o‘qilmadi.'));
-    reader.readAsDataURL(file);
-  });
+function renderAdminSection() {
+  if (!state.boot?.analytics) return '';
+  const analytics = state.boot.analytics;
+  return `
+    <section class="section ${state.tab === 'admin' ? '' : 'hidden'}" id="tab-admin">
+      <div class="section-head">
+        <div>
+          <div class="badge">Admin Dashboard</div>
+          <h2>Mini App Analytics</h2>
+          <p>Kunlik va umumiy ko‘rsatkichlar.</p>
+        </div>
+      </div>
+      <div class="profile-scoreboard">
+        <article class="stat-card profile-stat"><small class="muted">Bugun open</small><strong>${analytics.opensToday}</strong></article>
+        <article class="stat-card profile-stat"><small class="muted">Bugun quiz</small><strong>${analytics.quizzesToday}</strong></article>
+        <article class="stat-card profile-stat"><small class="muted">Jami profil</small><strong>${analytics.totalProfiles}</strong></article>
+        <article class="stat-card profile-stat"><small class="muted">Jami urinish</small><strong>${analytics.totalAttempts}</strong></article>
+      </div>
+      ${analytics.topTest ? `<div class="extra-card"><div class="badge">Top Test</div><strong>${escapeHtml(analytics.topTest.name)}</strong><div class="muted">${analytics.topTest.count} marta</div></div>` : ''}
+      ${analytics.mostActiveUser ? `<div class="extra-card"><div class="badge">Most Active</div><strong>${escapeHtml(analytics.mostActiveUser.displayName)}</strong><div class="muted">${analytics.mostActiveUser.count} urinish</div></div>` : ''}
+    </section>
+  `;
 }
 
 function renderOnboarding() {
@@ -618,20 +633,10 @@ function renderOnboarding() {
   if (!profile || profile.hasSeenOnboarding) return '';
 
   const slides = [
-    {
-      title: 'Quiz Arena',
-      text: 'Testlarni tanlang, natijangizni kuzating va reytingda ko‘tariling.'
-    },
-    {
-      title: 'Daily Challenge',
-      text: 'Har kuni maxsus challenge chiqadi. Uni o‘tkazib yubormang.'
-    },
-    {
-      title: 'Profile va Badges',
-      text: 'Profilni bezang, streak yig‘ing va yangi badge’larni oching.'
-    }
+    { title: 'Quiz Arena', text: 'Testlarni tanlang, natijangizni kuzating va reytingda ko‘tariling.' },
+    { title: 'Daily Challenge', text: 'Har kuni maxsus challenge chiqadi. Uni o‘tkazib yubormang.' },
+    { title: 'Profile va Badges', text: 'Profilni bezang, streak yig‘ing va yangi badge’larni oching.' }
   ];
-
   const slide = slides[state.onboardingStep] || slides[0];
 
   return `
@@ -654,12 +659,36 @@ function renderOnboarding() {
   `;
 }
 
+function renderAvatarCropOverlay() {
+  if (!state.avatarCropSource) return '';
+
+  return `
+    <div class="onboarding-overlay">
+      <div class="onboarding-card crop-card">
+        <div class="badge">Avatar Crop</div>
+        <h2>Avatarni moslang</h2>
+        <div class="crop-preview">
+          <img src="${state.avatarCropSource}" alt="" style="transform: scale(${state.avatarCropScale});" />
+        </div>
+        <input type="range" min="1" max="2.5" step="0.05" value="${state.avatarCropScale}" data-action="crop-scale" />
+        <div class="row">
+          <button class="secondary-button" data-action="cancel-crop">Bekor qilish</button>
+          <button class="button" data-action="apply-crop">Qo‘llash</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 function renderTabs() {
+  const tabs = ['quiz', 'rating', 'profile'];
+  if (state.boot?.analytics) tabs.push('admin');
+
   return `
     <nav class="tabs">
-      ${['quiz', 'rating', 'profile'].map((tab) => `
+      ${tabs.map((tab) => `
         <button class="tab-button ${state.tab === tab ? 'active' : ''} ${state.currentQuiz && tab !== 'quiz' ? 'disabled' : ''}" data-action="tab" data-tab="${tab}">
-          ${tab === 'quiz' ? 'Quiz' : tab === 'rating' ? 'Rating' : 'Profile'}
+          ${tab === 'quiz' ? 'Quiz' : tab === 'rating' ? 'Rating' : tab === 'profile' ? 'Profile' : 'Admin'}
         </button>
       `).join('')}
     </nav>
@@ -681,12 +710,11 @@ function render() {
   }
 
   const profile = getProfile();
+
   if (state.currentQuiz) {
     document.body.classList.add('runner-mode');
     app.classList.add('runner-mode');
-    app.innerHTML = `
-      ${renderQuizSection()}
-    `;
+    app.innerHTML = `${renderQuizSection()}`;
     return;
   }
 
@@ -697,8 +725,10 @@ function render() {
     ${renderQuizSection()}
     ${renderRatingSection()}
     ${renderProfileSection(profile)}
+    ${renderAdminSection()}
     ${renderTabs()}
     ${renderOnboarding()}
+    ${renderAvatarCropOverlay()}
   `;
 }
 
@@ -719,7 +749,8 @@ async function startQuiz(testId, options = {}) {
   const data = await api('/api/mini-app/quiz/start', {
     user: getTelegramUser(),
     testIndex: Number(testId),
-    isDailyChallenge: Boolean(options.isDailyChallenge)
+    isDailyChallenge: Boolean(options.isDailyChallenge),
+    duelCode: options.duelCode || ''
   });
 
   state.currentQuiz = {
@@ -728,7 +759,8 @@ async function startQuiz(testId, options = {}) {
     questions: data.questions,
     currentIndex: 0,
     startedAt: Date.now(),
-    isDailyChallenge: Boolean(options.isDailyChallenge)
+    isDailyChallenge: Boolean(options.isDailyChallenge),
+    duelCode: options.duelCode || ''
   };
   state.selectedAnswers = new Array(data.questions.length).fill(null);
   state.result = null;
@@ -740,14 +772,98 @@ async function startQuiz(testId, options = {}) {
   render();
 }
 
+async function startWeakQuiz() {
+  const data = await api('/api/mini-app/quiz/weak', { user: getTelegramUser() });
+  state.currentQuiz = {
+    quizId: data.quizId,
+    test: data.test,
+    questions: data.questions,
+    currentIndex: 0,
+    startedAt: Date.now(),
+    isDailyChallenge: false
+  };
+  state.selectedAnswers = new Array(data.questions.length).fill(null);
+  state.result = null;
+  state.tab = 'quiz';
+  state.timerNow = Date.now();
+  state.autoAdvanceLock = false;
+  state.boot.activeQuiz = null;
+  startTimer();
+  render();
+}
+
+async function createDuel() {
+  const testId = getFilteredTests()[0]?.id || state.boot?.tests?.[0]?.id || 1;
+  const data = await api('/api/mini-app/duel/create', {
+    user: getTelegramUser(),
+    testIndex: testId
+  });
+
+  state.duelCodeInput = data.duelCode;
+  if (navigator.share) {
+    try {
+      await navigator.share({ text: data.shareText });
+    } catch (_) {
+      // ignore
+    }
+  }
+
+  state.currentQuiz = {
+    ...data.quiz,
+    currentIndex: 0
+  };
+  state.selectedAnswers = new Array(data.quiz.questions.length).fill(null);
+  state.result = null;
+  state.tab = 'quiz';
+  state.timerNow = Date.now();
+  state.autoAdvanceLock = false;
+  startTimer();
+  render();
+}
+
+async function joinDuel() {
+  if (!state.duelCodeInput.trim()) return;
+  const data = await api('/api/mini-app/duel/join', {
+    user: getTelegramUser(),
+    duelCode: state.duelCodeInput.trim()
+  });
+
+  state.currentQuiz = {
+    ...data.quiz,
+    currentIndex: 0
+  };
+  state.selectedAnswers = new Array(data.quiz.questions.length).fill(null);
+  state.result = null;
+  state.tab = 'quiz';
+  state.timerNow = Date.now();
+  state.autoAdvanceLock = false;
+  startTimer();
+  render();
+}
+
+async function persistQuizProgress() {
+  if (!state.currentQuiz?.quizId) return;
+  try {
+    const data = await api('/api/mini-app/quiz/progress', {
+      user: getTelegramUser(),
+      quizId: state.currentQuiz.quizId,
+      answers: state.selectedAnswers,
+      currentIndex: state.currentQuiz.currentIndex
+    });
+    state.boot.activeQuiz = data;
+  } catch (_) {
+    // ignore autosave errors
+  }
+}
+
 async function finishQuiz() {
   const data = await api('/api/mini-app/quiz/finish', {
     user: getTelegramUser(),
     quizId: state.currentQuiz.quizId,
     answers: state.selectedAnswers
   });
+
   stopTimer();
-  state.result = data;
   state.boot.user = data.profile;
   state.boot.leaderboard = data.leaderboard;
   state.boot.analytics = data.analytics || state.boot.analytics;
@@ -766,10 +882,12 @@ async function saveProfile() {
   const avatarUrl = state.profileAvatarDraft !== null
     ? state.profileAvatarDraft
     : (state.boot?.user?.avatarUrl || '');
+
   const data = await api('/api/mini-app/profile', {
     user: getTelegramUser(),
     profile: { displayName, avatarUrl, remindersEnabled }
   });
+
   state.boot.user = data;
   state.profileAvatarDraft = null;
   render();
@@ -811,24 +929,45 @@ function scheduleAutoAdvance() {
 
     state.currentQuiz.currentIndex += 1;
     state.autoAdvanceLock = false;
-    void persistQuizProgress();
+    await persistQuizProgress();
     render();
   }, 420);
 }
 
-async function persistQuizProgress() {
-  if (!state.currentQuiz?.quizId) return;
-  try {
-    const data = await api('/api/mini-app/quiz/progress', {
-      user: getTelegramUser(),
-      quizId: state.currentQuiz.quizId,
-      answers: state.selectedAnswers,
-      currentIndex: state.currentQuiz.currentIndex
-    });
-    state.boot.activeQuiz = data;
-  } catch (_) {
-    // ignore lightweight autosave failures
+async function applyAvatarCrop() {
+  const image = new Image();
+  image.src = state.avatarCropSource;
+
+  await new Promise((resolve, reject) => {
+    image.onload = resolve;
+    image.onerror = reject;
+  });
+
+  const size = 256;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    throw new Error('Canvas yaratilmadi.');
   }
+
+  ctx.fillStyle = '#10203b';
+  ctx.fillRect(0, 0, size, size);
+
+  const scale = state.avatarCropScale;
+  const width = image.width * scale;
+  const height = image.height * scale;
+  const ratio = Math.max(size / width, size / height);
+  const drawWidth = width * ratio;
+  const drawHeight = height * ratio;
+  const x = (size - drawWidth) / 2;
+  const y = (size - drawHeight) / 2;
+  ctx.drawImage(image, x, y, drawWidth, drawHeight);
+
+  state.profileAvatarDraft = canvas.toDataURL('image/jpeg', 0.9);
+  state.avatarCropSource = null;
+  state.avatarCropScale = 1;
 }
 
 document.addEventListener('click', async (event) => {
@@ -877,6 +1016,12 @@ document.addEventListener('click', async (event) => {
     return;
   }
 
+  if (action === 'start-weak-quiz') {
+    haptic('impact');
+    await startWeakQuiz();
+    return;
+  }
+
   if (action === 'resume-quiz') {
     haptic('impact');
     state.currentQuiz = state.boot.activeQuiz;
@@ -889,8 +1034,20 @@ document.addEventListener('click', async (event) => {
     return;
   }
 
+  if (action === 'create-duel') {
+    haptic('impact');
+    await createDuel();
+    return;
+  }
+
+  if (action === 'join-duel') {
+    haptic('impact');
+    await joinDuel();
+    return;
+  }
+
   if (action === 'leave-quiz') {
-    void persistQuizProgress();
+    await persistQuizProgress();
     leaveQuiz();
     return;
   }
@@ -899,7 +1056,7 @@ document.addEventListener('click', async (event) => {
     if (state.autoAdvanceLock) return;
     haptic('selection');
     state.selectedAnswers[state.currentQuiz.currentIndex] = Number(trigger.dataset.optionIndex);
-    void persistQuizProgress();
+    await persistQuizProgress();
     render();
     scheduleAutoAdvance();
     return;
@@ -907,13 +1064,7 @@ document.addEventListener('click', async (event) => {
 
   if (action === 'prev-question') {
     state.currentQuiz.currentIndex = Math.max(0, state.currentQuiz.currentIndex - 1);
-    render();
-    return;
-  }
-
-  if (action === 'next-question') {
-    if (state.selectedAnswers[state.currentQuiz.currentIndex] === null) return;
-    state.currentQuiz.currentIndex = Math.min(state.currentQuiz.questions.length - 1, state.currentQuiz.currentIndex + 1);
+    await persistQuizProgress();
     render();
     return;
   }
@@ -924,19 +1075,29 @@ document.addEventListener('click', async (event) => {
     return;
   }
 
-  if (action === 'finish-quiz') {
-    haptic('success');
-    await finishQuiz();
-    return;
-  }
-
-  if (action === 'save-profile') {
-    await saveProfile();
+  if (action === 'share-result') {
+    const result = state.currentQuiz?.result;
+    if (!result) return;
+    const text = `${result.testName}\n✅ ${result.correct}\n❌ ${result.wrong}\n📈 ${result.percent}%`;
+    if (navigator.share) {
+      try {
+        await navigator.share({ text });
+      } catch (_) {
+        // ignore
+      }
+    } else if (navigator.clipboard) {
+      await navigator.clipboard.writeText(text);
+    }
     return;
   }
 
   if (action === 'pick-avatar') {
     document.getElementById('avatarFileInput')?.click();
+    return;
+  }
+
+  if (action === 'save-profile') {
+    await saveProfile();
     return;
   }
 
@@ -963,6 +1124,19 @@ document.addEventListener('click', async (event) => {
 
   if (action === 'finish-onboarding') {
     await markOnboardingComplete();
+    return;
+  }
+
+  if (action === 'cancel-crop') {
+    state.avatarCropSource = null;
+    state.avatarCropScale = 1;
+    render();
+    return;
+  }
+
+  if (action === 'apply-crop') {
+    await applyAvatarCrop();
+    render();
   }
 });
 
@@ -972,17 +1146,40 @@ document.addEventListener('change', async (event) => {
   if (target.id !== 'avatarFileInput') return;
   const [file] = Array.from(target.files || []);
   if (!file) return;
-  state.profileAvatarDraft = await resizeImageFile(file);
-  haptic('impact');
+
+  state.avatarCropSource = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(new Error('Fayl o‘qilmadi.'));
+    reader.readAsDataURL(file);
+  });
+  state.avatarCropScale = 1;
+  target.value = '';
   render();
 });
 
 document.addEventListener('input', (event) => {
   const target = event.target;
   if (!(target instanceof HTMLInputElement)) return;
-  if (target.dataset.action !== 'search-tests') return;
-  state.testSearch = target.value;
-  render();
+
+  if (target.dataset.action === 'search-tests') {
+    state.testSearch = target.value;
+    render();
+    return;
+  }
+
+  if (target.id === 'duelCodeInput') {
+    state.duelCodeInput = target.value.toUpperCase();
+    return;
+  }
+
+  if (target.dataset.action === 'crop-scale') {
+    state.avatarCropScale = Number(target.value);
+    const previewImage = document.querySelector('.crop-preview img');
+    if (previewImage) {
+      previewImage.style.transform = `scale(${state.avatarCropScale})`;
+    }
+  }
 });
 
 bootstrap().catch((error) => {

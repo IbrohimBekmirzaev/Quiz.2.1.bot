@@ -10,6 +10,10 @@ const {
   getActiveQuizForUser,
   finishQuizSession,
   recordQuizAttempt,
+  createDuelChallenge,
+  getDuelByCode,
+  attachDuelOpponent,
+  recordDuelResult,
   getLeaderboard,
   getProfileView,
   getMiniAppAnalytics,
@@ -48,6 +52,12 @@ function getDailyChallengeTest(tests) {
   return tests[index];
 }
 
+function getDailyChallengeEndsAt() {
+  const tomorrow = new Date();
+  tomorrow.setUTCHours(24, 0, 0, 0);
+  return tomorrow.toISOString();
+}
+
 function buildTestList(tests, dailyChallengeId) {
   return tests.map((test) => ({
     id: test.id,
@@ -70,6 +80,7 @@ function buildResumeQuiz(session) {
     startedAt: Date.parse(session.startedAt || session.createdAt || new Date().toISOString()),
     answers: Array.isArray(session.answers) ? session.answers : new Array(session.questions.length).fill(null),
     isDailyChallenge: Boolean(session.isDailyChallenge),
+    duelCode: session.duelCode || '',
     questions: (session.questions || []).map((question, index) => sanitizeQuestion(question, index))
   };
 }
@@ -80,24 +91,31 @@ function isAdminUser(user) {
 
 async function getMiniAppBootPayload(userPayload) {
   const user = normalizeTelegramUser(userPayload);
+  const before = getProfileView(user);
   registerMiniAppOpen(user);
+  const profile = getProfileView(user);
   const tests = await getTests();
   const dailyChallenge = getDailyChallengeTest(tests);
   const activeQuiz = getActiveQuizForUser(user.id);
   return {
-    user: getProfileView(user),
+    user: profile,
     tests: buildTestList(tests, dailyChallenge?.id),
     leaderboard: getLeaderboard(),
     dailyChallenge: dailyChallenge
       ? {
           id: dailyChallenge.id,
           name: dailyChallenge.name,
-          questionCount: Math.min(dailyChallenge.items.length, config.questionsPerTest)
+          questionCount: Math.min(dailyChallenge.items.length, config.questionsPerTest),
+          endsAt: getDailyChallengeEndsAt()
         }
       : null,
     activeQuiz: buildResumeQuiz(activeQuiz),
     analytics: isAdminUser(user) ? getMiniAppAnalytics() : null,
-    duelEnabled: false
+    duelEnabled: true,
+    notifications: {
+      streakIncreased: profile.streakDays > before.streakDays,
+      streakDays: profile.streakDays
+    }
   };
 }
 
@@ -119,7 +137,8 @@ async function startMiniAppQuiz(userPayload, testIndex, options = {}) {
 
   const questions = await createQuestionsForTest(test);
   const quizId = createQuizSession(user, test, questions, {
-    isDailyChallenge: Boolean(options.isDailyChallenge)
+    isDailyChallenge: Boolean(options.isDailyChallenge),
+    duelCode: options.duelCode || ''
   });
 
   return {
@@ -133,7 +152,72 @@ async function startMiniAppQuiz(userPayload, testIndex, options = {}) {
     answers: new Array(questions.length).fill(null),
     startedAt: Date.now(),
     isDailyChallenge: Boolean(options.isDailyChallenge),
+    duelCode: options.duelCode || '',
     questions
+  };
+}
+
+async function startWeakWordsQuiz(userPayload) {
+  const user = normalizeTelegramUser(userPayload);
+  const profile = getProfileView(user);
+  if (!profile.weakWords?.length) {
+    throw new Error('Weak words hali yo‘q.');
+  }
+
+  const tests = await getTests();
+  const allItems = await getVocabularyList();
+  const weakItems = profile.weakWords.map((item, index) => ({
+    arabic: item.arabic,
+    uzbek: item.correctAnswer,
+    id: `weak_${index}`
+  }));
+  const test = { id: 9000, name: 'Weak Words', items: weakItems };
+  const questions = pickQuestions(weakItems, allItems, weakItems.length)
+    .slice(0, Math.min(config.questionsPerTest, weakItems.length))
+    .map((question, index) => sanitizeQuestion(question, index));
+  const quizId = createQuizSession(user, test, questions, { isDailyChallenge: false });
+
+  return {
+    quizId,
+    test: {
+      id: test.id,
+      name: test.name,
+      subtitle: 'Xato qilingan so‘zlar'
+    },
+    currentIndex: 0,
+    answers: new Array(questions.length).fill(null),
+    startedAt: Date.now(),
+    isDailyChallenge: false,
+    questions
+  };
+}
+
+async function createMiniAppDuel(userPayload, testIndex) {
+  const user = normalizeTelegramUser(userPayload);
+  const tests = await getTests();
+  const test = tests.find((item) => item.id === Number(testIndex));
+  if (!test) throw new Error('Test topilmadi.');
+
+  const duel = createDuelChallenge(user, test);
+  const quiz = await startMiniAppQuiz(user, test.id, { duelCode: duel.code });
+
+  return {
+    duelCode: duel.code,
+    shareText: `Menga qarshi duelga qo‘shil: ${duel.code}`,
+    quiz
+  };
+}
+
+async function joinMiniAppDuel(userPayload, duelCode) {
+  const user = normalizeTelegramUser(userPayload);
+  const duel = attachDuelOpponent(duelCode, user);
+  if (!duel) throw new Error('Duel topilmadi.');
+  if (!duel.testIndex) throw new Error('Duel buzilgan.');
+
+  const quiz = await startMiniAppQuiz(user, duel.testIndex, { duelCode: duel.code });
+  return {
+    duelCode: duel.code,
+    quiz
   };
 }
 
@@ -198,6 +282,7 @@ function finishMiniAppQuiz(userPayload, payload = {}) {
     Math.floor((Date.now() - Date.parse(session.startedAt || session.createdAt || new Date().toISOString())) / 1000)
   );
 
+  const before = getProfileView(user);
   recordQuizAttempt(user, {
     testIndex: session.testIndex,
     testName: session.testName,
@@ -208,7 +293,11 @@ function finishMiniAppQuiz(userPayload, payload = {}) {
     durationSeconds,
     isDailyChallenge: Boolean(session.isDailyChallenge)
   });
+  const duel = session.duelCode ? recordDuelResult(session.duelCode, user.id, { percent, durationSeconds }) : null;
   finishQuizSession(quizId);
+  const profile = getProfileView(user);
+  const previousBadges = new Set((before.badges || []).map((badge) => badge.id));
+  const unlockedBadges = (profile.badges || []).filter((badge) => !previousBadges.has(badge.id));
 
   return {
     testIndex: session.testIndex,
@@ -217,9 +306,15 @@ function finishMiniAppQuiz(userPayload, payload = {}) {
     wrong,
     percent,
     durationSeconds,
-    profile: getProfileView(user),
+    profile,
     leaderboard: getLeaderboard(),
-    analytics: isAdminUser(user) ? getMiniAppAnalytics() : null
+    analytics: isAdminUser(user) ? getMiniAppAnalytics() : null,
+    duel,
+    notifications: {
+      unlockedBadges,
+      challengeCompleted: Boolean(session.isDailyChallenge),
+      newLevel: profile.level?.name !== before.level?.name ? profile.level : null
+    }
   };
 }
 
@@ -233,6 +328,9 @@ module.exports = {
   normalizeTelegramUser,
   getMiniAppBootPayload,
   startMiniAppQuiz,
+  startWeakWordsQuiz,
+  createMiniAppDuel,
+  joinMiniAppDuel,
   saveMiniAppQuizProgress,
   finishMiniAppQuiz,
   updateMiniAppProfile,

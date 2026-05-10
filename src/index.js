@@ -11,17 +11,22 @@ const { getLessonTests } = require('./services/vocabularyService');
 const {
   getMiniAppBootPayload,
   startMiniAppQuiz,
+  startWeakWordsQuiz,
+  createMiniAppDuel,
+  joinMiniAppDuel,
   saveMiniAppQuizProgress,
   finishMiniAppQuiz,
   updateMiniAppProfile,
   normalizeTelegramUser
 } = require('./services/miniAppService');
+const { getReminderCandidates, markReminderSent } = require('./storage/miniAppStore');
 
 const bot = new TelegramBot(config.botToken, { polling: true });
 let pollingRestartTimer = null;
 let restartingPolling = false;
 let healthServer = null;
 let lastPollingConflictAt = 0;
+let reminderTimer = null;
 const publicDir = path.join(__dirname, '..', 'public', 'mini-app');
 
 function isPollingConflict(error) {
@@ -81,6 +86,85 @@ async function warmupTests() {
     console.log(`Testlar yuklandi: ${tests.length} ta.`);
   } catch (error) {
     await safeLogError(error, { place: 'warmupTests' });
+  }
+}
+
+async function setupTelegramBotUi() {
+  try {
+    await bot.setMyCommands([
+      { command: 'start', description: 'Botni boshlash' },
+      { command: 'quiz', description: 'Quiz testni boshlash' },
+      { command: 'app', description: 'Mini Appni ochish' },
+      { command: 'help', description: 'Yordam' }
+    ]);
+
+    if (config.miniAppWebAppUrl) {
+      await bot.setChatMenuButton({
+        menu_button: {
+          type: 'web_app',
+          text: 'Mini App',
+          web_app: { url: config.miniAppWebAppUrl }
+        }
+      });
+    }
+  } catch (error) {
+    await safeLogError(error, { place: 'setupTelegramBotUi' });
+  }
+}
+
+async function runReminderCycle() {
+  const candidates = getReminderCandidates();
+  for (const profile of candidates) {
+    try {
+      await bot.sendMessage(
+        profile.id,
+        `🔔 Sizni mini app kutyapti.\n\n🔥 Streak: ${profile.streakDays || 0} kun\n📚 Daily challenge ham tayyor.\n\nMini appga kirib davom eting.`
+      );
+      markReminderSent(profile.id);
+    } catch (error) {
+      console.error('Reminder yuborishda xato:', error.message);
+    }
+  }
+}
+
+function startReminderLoop() {
+  if (reminderTimer) {
+    clearInterval(reminderTimer);
+  }
+
+  reminderTimer = setInterval(() => {
+    runReminderCycle().catch((error) => {
+      console.error('Reminder cycle xatosi:', error.message);
+    });
+  }, 30 * 60 * 1000);
+}
+
+async function sendMiniAppSyncMessages(userId, notifications = {}) {
+  if (!userId) return;
+  const messages = [];
+
+  if (notifications.streakIncreased && notifications.streakDays > 1) {
+    messages.push(`🔥 Streak davom etyapti: ${notifications.streakDays} kun.`);
+  }
+
+  if (Array.isArray(notifications.unlockedBadges) && notifications.unlockedBadges.length) {
+    messages.push(`🏅 Yangi badge: ${notifications.unlockedBadges.map((badge) => badge.label).join(', ')}`);
+  }
+
+  if (notifications.challengeCompleted) {
+    messages.push('⚡ Daily challenge yakunlandi.');
+  }
+
+  if (notifications.newLevel?.name) {
+    messages.push(`📈 Yangi daraja: ${notifications.newLevel.name}`);
+  }
+
+  for (const text of messages) {
+    try {
+      await bot.sendMessage(userId, text);
+    } catch (error) {
+      console.error('Mini app sync xabari yuborilmadi:', error.message);
+    }
   }
 }
 
@@ -156,6 +240,7 @@ async function handleMiniAppApi(req, res, requestUrl) {
   if (requestUrl.pathname === '/api/mini-app/bootstrap') {
     const data = await getMiniAppBootPayload(user);
     await logLink(bot, virtualMsg, 'Mini App ochildi', config.miniAppUrl, 'mini_app');
+    await sendMiniAppSyncMessages(user.id, data.notifications);
     sendJson(res, 200, { ok: true, data });
     return;
   }
@@ -169,6 +254,27 @@ async function handleMiniAppApi(req, res, requestUrl) {
     return;
   }
 
+  if (requestUrl.pathname === '/api/mini-app/quiz/weak') {
+    const data = await startWeakWordsQuiz(user);
+    await logQuizStarted(bot, virtualMsg, data.test.name, 'mini_app');
+    sendJson(res, 200, { ok: true, data });
+    return;
+  }
+
+  if (requestUrl.pathname === '/api/mini-app/duel/create') {
+    const data = await createMiniAppDuel(user, payload.testIndex);
+    await logQuizStarted(bot, virtualMsg, `${data.quiz.test.name} [Duel]`, 'mini_app');
+    sendJson(res, 200, { ok: true, data });
+    return;
+  }
+
+  if (requestUrl.pathname === '/api/mini-app/duel/join') {
+    const data = await joinMiniAppDuel(user, payload.duelCode);
+    await logQuizStarted(bot, virtualMsg, `${data.quiz.test.name} [Duel]`, 'mini_app');
+    sendJson(res, 200, { ok: true, data });
+    return;
+  }
+
   if (requestUrl.pathname === '/api/mini-app/quiz/progress') {
     const data = saveMiniAppQuizProgress(user, payload);
     sendJson(res, 200, { ok: true, data });
@@ -178,6 +284,7 @@ async function handleMiniAppApi(req, res, requestUrl) {
   if (requestUrl.pathname === '/api/mini-app/quiz/finish') {
     const data = await finishMiniAppQuiz(user, payload);
     await logQuizFinished(bot, virtualMsg, data.testName, data.correct, data.wrong, 'mini_app');
+    await sendMiniAppSyncMessages(user.id, data.notifications);
     sendJson(res, 200, { ok: true, data });
     return;
   }
@@ -250,6 +357,11 @@ async function shutdown(signal) {
     console.error('Pollingni yopishda xato:', error.message);
   }
 
+  if (reminderTimer) {
+    clearInterval(reminderTimer);
+    reminderTimer = null;
+  }
+
   if (healthServer) {
     await new Promise((resolve) => healthServer.close(resolve));
   }
@@ -316,5 +428,7 @@ process.on('SIGINT', () => {
 startHealthServer();
 console.log('Telegram polling yoqildi.');
 warmupTests();
+setupTelegramBotUi();
+startReminderLoop();
 
 console.log(`${config.botName} ishga tushdi.`);
