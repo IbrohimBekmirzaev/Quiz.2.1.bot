@@ -260,6 +260,8 @@ async function joinMiniAppDuel(userPayload, duelCode) {
   const quiz = await startMiniAppQuiz(user, duel.testIndex, { duelCode: duel.code });
   return {
     duelCode: duel.code,
+    creatorId: duel.creatorId,
+    opponentName: user.first_name || user.username || String(user.id),
     quiz
   };
 }

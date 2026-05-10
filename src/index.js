@@ -306,6 +306,16 @@ async function handleMiniAppApi(req, res, requestUrl) {
         console.error('Duel join DM yuborilmadi:', error.message);
       }
     }
+    if (data.creatorId && String(data.creatorId) !== String(user.id)) {
+      try {
+        await bot.sendMessage(
+          data.creatorId,
+          `⚔️ Duelingizga raqib qo‘shildi.\n\n👤 ${data.opponentName || 'Foydalanuvchi'}\n📚 Test: ${data.quiz.test.name}\n🔑 Kod: ${data.duelCode}`
+        );
+      } catch (error) {
+        console.error('Duel creator notify yuborilmadi:', error.message);
+      }
+    }
     sendJson(res, 200, { ok: true, data });
     return;
   }

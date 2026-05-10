@@ -455,6 +455,9 @@ function renderActiveQuiz() {
 
         ${active.result.duel?.result ? `
           <div class="duel-result-banner ${active.result.duel.status || ''}">
+            <div class="duel-result-spark spark-a"></div>
+            <div class="duel-result-spark spark-b"></div>
+            <div class="duel-result-spark spark-c"></div>
             <div class="duel-result-medal">${active.result.duel.result.medal}</div>
             <div>
               <strong>${escapeHtml(active.result.duel.result.title)}</strong>
@@ -487,6 +490,7 @@ function renderActiveQuiz() {
             <button class="secondary-button" data-action="restart-test" data-test-id="${active.test.id}">Qayta</button>
             ${nextTestId ? `<button class="button" data-action="start-quiz" data-test-id="${nextTestId}">Keyingi test</button>` : ''}
             <button class="secondary-button" data-action="share-result">Ulashish</button>
+            ${active.result.duel?.result ? '<button class="button" data-action="share-duel-result">Duel kartasi</button>' : ''}
           </div>
         </div>
       </section>
@@ -1351,6 +1355,37 @@ document.addEventListener('click', async (event) => {
         await navigator.clipboard.writeText(text);
       }
       showToast('Natija ulashishga tayyor', 'success');
+      return;
+    }
+
+    if (action === 'share-duel-result') {
+      const result = state.currentQuiz?.result;
+      if (!result?.duel?.result) return;
+      const duelText = [
+        `⚔️ Duel natijasi`,
+        `📚 ${result.testName}`,
+        `${result.duel.result.medal} ${result.duel.result.title}`,
+        `✅ ${result.correct} | ❌ ${result.wrong} | 📈 ${result.percent}%`
+      ].join('\n');
+      const file = await generateResultShareFile(result);
+
+      if (file && navigator.canShare?.({ files: [file] }) && navigator.share) {
+        try {
+          await navigator.share({ files: [file], text: duelText });
+        } catch (_) {
+          // ignore
+        }
+      } else if (navigator.share) {
+        try {
+          await navigator.share({ text: duelText });
+        } catch (_) {
+          // ignore
+        }
+      } else if (navigator.clipboard) {
+        await navigator.clipboard.writeText(duelText);
+      }
+
+      showToast('Duel kartasi ulashishga tayyor', 'success');
       return;
     }
 

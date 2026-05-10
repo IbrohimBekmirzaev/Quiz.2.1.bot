@@ -1078,6 +1078,8 @@ html[data-theme="light"] .tabs {
 
 .duel-result-banner,
 .challenge-done-banner {
+  position: relative;
+  overflow: hidden;
   display: grid;
   grid-template-columns: auto 1fr;
   align-items: center;
@@ -1111,6 +1113,35 @@ html[data-theme="light"] .tabs {
   place-items: center;
   background: rgba(255,255,255,0.08);
   font-size: 26px;
+  animation: duelMedalBounce 1s ease;
+}
+
+.duel-result-spark {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(255, 221, 120, 0.88);
+  box-shadow: 0 0 24px rgba(255, 221, 120, 0.65);
+  animation: duelSpark 1.35s ease-out infinite;
+  pointer-events: none;
+}
+
+.duel-result-spark.spark-a {
+  top: 14px;
+  left: 24px;
+}
+
+.duel-result-spark.spark-b {
+  top: 20px;
+  left: 62px;
+  animation-delay: 0.24s;
+}
+
+.duel-result-spark.spark-c {
+  top: 36px;
+  left: 40px;
+  animation-delay: 0.5s;
 }
 
 .premium-result-grid {
@@ -1257,6 +1288,34 @@ html[data-theme="light"] .tabs {
   }
   to {
     transform: translateX(120%);
+  }
+}
+
+@keyframes duelMedalBounce {
+  0% {
+    transform: scale(0.72) rotate(-8deg);
+    opacity: 0.45;
+  }
+  65% {
+    transform: scale(1.12) rotate(6deg);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1) rotate(0deg);
+  }
+}
+
+@keyframes duelSpark {
+  0% {
+    transform: translate3d(0, 6px, 0) scale(0.55);
+    opacity: 0;
+  }
+  30% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate3d(0, -20px, 0) scale(1);
+    opacity: 0;
   }
 }
 
