@@ -97,6 +97,7 @@ async function setupTelegramBotUi() {
       { command: 'app', description: 'Mini Appni ochish' },
       { command: 'profile', description: 'Profil va natijalar' },
       { command: 'top', description: 'Top 10 reyting' },
+      { command: 'admin', description: 'Admin panel' },
       { command: 'help', description: 'Yordam' }
     ]);
 

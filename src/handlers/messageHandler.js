@@ -4,12 +4,24 @@ const { buildMiniAppButtonRow } = require('../services/menuService');
 const { logStart, forwardUserSupport, logError } = require('../services/loggerService');
 const { buildAdminStatsText } = require('../services/adminService');
 const { handleAdminReply } = require('./adminReplyHandler');
-const { getProfileView, getMiniAppBroadcastUsers, getLeaderboard } = require('../storage/miniAppStore');
-const { getBroadcastUsers: getBotBroadcastUsers } = require('../storage/userStatsStore');
-const { getPendingSupportItems } = require('../storage/supportStore');
-const { formatDate } = require('../utils/time');
-
-let pendingBroadcast = null;
+const { getProfileView } = require('../storage/miniAppStore');
+const {
+  buildAdminPanelText,
+  buildAdminPanelMarkup,
+  buildGeneralHelpText,
+  buildPendingText,
+  buildTopText,
+  buildUserInfoText,
+  buildBroadcastHelpText,
+  buildUserHelpText
+} = require('../services/adminPanelService');
+const {
+  getBroadcastTargetCount,
+  setPendingBroadcast,
+  getPendingBroadcast,
+  clearPendingBroadcast,
+  sendBroadcastPayload
+} = require('../services/broadcastService');
 
 function isAdminUser(msg) {
   return config.adminUserIds.includes(String(msg.from?.id || ''));
@@ -29,38 +41,11 @@ function isAdminCommand(text = '', msg = {}) {
     '/broadcast',
     '/confirmbroadcast',
     '/cancelbroadcast',
-    '/adminhelp'
+    '/adminhelp',
+    '/admin',
+    '/adminpanel',
+    '/panel'
   ].some((command) => text === command || text.startsWith(`${command} `) || caption === command || caption.startsWith(`${command} `));
-}
-
-function buildHelpText(admin = false) {
-  const lines = [
-    'ℹ️ Yordam',
-    '',
-    '• /start - botni ochadi',
-    '• /app - mini appni ochadi',
-    '• /profile - natijalarimni ko‘rsatadi',
-    '• /top - top 10 reyting',
-    '• /menu - testlar menyusini qayta ochadi',
-    '• Testni tanlang, arabcha so\'zni o\'qing va tarjimani belgilang',
-    '• Savolga javob topolmasangiz, oddiy xabar yozing. U adminga yuboriladi'
-  ];
-
-  if (admin) {
-    lines.push(
-      '',
-      '🔐 Admin komandalar',
-      '• /adminstats - umumiy statistika',
-      '• /pending - javob kutilayotgan support xabarlar',
-      '• /user ID - bitta foydalanuvchi ma’lumoti',
-      '• /broadcast matn - hammaga xabar yuborish',
-      '• Media captioniga /broadcast yozib rasm/video/voice yuborish mumkin',
-      '• /confirmbroadcast - broadcastni tasdiqlash',
-      '• /cancelbroadcast - broadcastni bekor qilish'
-    );
-  }
-
-  return lines.join('\n');
 }
 
 function buildProfileText(msg) {
@@ -85,13 +70,6 @@ function buildProfileText(msg) {
     `• Bugun: ${profile.today?.points || 0} ball, ${profile.today?.attempts || 0} urinish`,
     lastResult ? `• Oxirgi test: ${lastResult.testName} (${lastResult.percent}%)` : '• Oxirgi test: hali yo‘q'
   ].join('\n');
-}
-
-function getAllBroadcastChatIds() {
-  return [...new Set([
-    ...getBotBroadcastUsers(),
-    ...getMiniAppBroadcastUsers()
-  ].map(String).filter(Boolean))];
 }
 
 function getMediaPayloadFromMessage(msg, fallbackCaption = '') {
@@ -119,80 +97,6 @@ function buildBroadcastPayload(msg, text) {
   return message ? { type: 'text', text: message } : null;
 }
 
-async function sendBroadcastPayload(bot, payload) {
-  const chatIds = getAllBroadcastChatIds();
-  let sent = 0;
-  let failed = 0;
-
-  for (const chatId of chatIds) {
-    try {
-      if (payload.type === 'photo') await bot.sendPhoto(chatId, payload.fileId, { caption: payload.caption || '' });
-      else if (payload.type === 'video') await bot.sendVideo(chatId, payload.fileId, { caption: payload.caption || '' });
-      else if (payload.type === 'audio') await bot.sendAudio(chatId, payload.fileId, { caption: payload.caption || '' });
-      else if (payload.type === 'voice') await bot.sendVoice(chatId, payload.fileId, { caption: payload.caption || '' });
-      else if (payload.type === 'document') await bot.sendDocument(chatId, payload.fileId, { caption: payload.caption || '' });
-      else if (payload.type === 'animation') await bot.sendAnimation(chatId, payload.fileId, { caption: payload.caption || '' });
-      else if (payload.type === 'sticker') await bot.sendSticker(chatId, payload.fileId);
-      else await bot.sendMessage(chatId, payload.text || payload.caption || '');
-      sent += 1;
-    } catch (_) {
-      failed += 1;
-    }
-  }
-
-  return { total: chatIds.length, sent, failed };
-}
-
-function buildPendingText() {
-  const items = getPendingSupportItems(20);
-  if (!items.length) return '✅ Javob kutilayotgan support xabar yo‘q.';
-  return [
-    '📥 Javob kutilayotgan xabarlar',
-    '',
-    ...items.map((item, index) => [
-      `${index + 1}. SID: ${item.id}`,
-      `👤 ${item.name} (${item.username})`,
-      `UID: ${item.chatId}`,
-      `Turi: ${item.typeLabel}`,
-      `Vaqt: ${formatDate(new Date(item.createdAt))}`,
-      item.preview ? `Matn: ${item.preview}` : ''
-    ].filter(Boolean).join('\n'))
-  ].join('\n\n');
-}
-
-function buildTopText() {
-  const top = getLeaderboard().allTime.slice(0, 10);
-  if (!top.length) return '🏆 Reyting hali bo‘sh.';
-  return [
-    '🏆 Top 10 reyting',
-    '',
-    ...top.map((item) => `#${item.rank} ${item.displayName} — ${item.points} ball, ✅ ${item.totalCorrect}, ❌ ${item.totalWrong}`)
-  ].join('\n');
-}
-
-function buildUserInfoText(userId) {
-  const profile = getProfileView({ id: userId, first_name: 'Foydalanuvchi' });
-  const total = profile.totalCorrect + profile.totalWrong;
-  const accuracy = total ? Math.round((profile.totalCorrect / total) * 100) : 0;
-  return [
-    '👤 User ma’lumoti',
-    `• ID: ${profile.id}`,
-    `• Ism: ${profile.displayName}`,
-    `• Username: ${profile.username}`,
-    `• Ball: ${profile.points}`,
-    `• Reyting: ${profile.allTimeRank ? `#${profile.allTimeRank}` : '-'}`,
-    `• Aniqlik: ${accuracy}%`,
-    `• Testlar: ${profile.attempts}`,
-    `• Bugun: ${profile.today?.points || 0} ball, ${profile.today?.attempts || 0} urinish`,
-    `• Streak: ${profile.streakDays || 0} kun`,
-    '',
-    'Oxirgi natijalar',
-    ...(profile.recentResults?.length
-      ? profile.recentResults.slice(0, 5).map((item) => `• ${item.testName}: ${item.percent}% (✅ ${item.correct}, ❌ ${item.wrong})`)
-      : ['• Hali natija yo‘q'])
-  ].join('\n');
-}
-
 async function handleMessage(bot, msg) {
   try {
     const text = (msg.text || '').trim();
@@ -204,8 +108,16 @@ async function handleMessage(bot, msg) {
         return;
       }
 
+      if (text === '/admin' || text === '/adminpanel' || text === '/panel') {
+        await bot.sendMessage(msg.chat.id, buildAdminPanelText(), {
+          message_thread_id: msg.message_thread_id,
+          reply_markup: buildAdminPanelMarkup()
+        });
+        return;
+      }
+
       if (text === '/adminhelp') {
-        await bot.sendMessage(msg.chat.id, buildHelpText(true), {
+        await bot.sendMessage(msg.chat.id, buildGeneralHelpText(true), {
           message_thread_id: msg.message_thread_id
         });
         return;
@@ -213,6 +125,21 @@ async function handleMessage(bot, msg) {
 
       if (text === '/adminstats') {
         await bot.sendMessage(msg.chat.id, await buildAdminStatsText(), {
+          message_thread_id: msg.message_thread_id,
+          reply_markup: buildAdminPanelMarkup()
+        });
+        return;
+      }
+
+      if (text === '/broadcast') {
+        await bot.sendMessage(msg.chat.id, buildBroadcastHelpText(), {
+          message_thread_id: msg.message_thread_id
+        });
+        return;
+      }
+
+      if (text === '/user') {
+        await bot.sendMessage(msg.chat.id, buildUserHelpText(), {
           message_thread_id: msg.message_thread_id
         });
         return;
@@ -248,26 +175,27 @@ async function handleMessage(bot, msg) {
           });
           return;
         }
-        pendingBroadcast = {
-          payload,
-          adminId: String(msg.from?.id || ''),
-          createdAt: Date.now()
-        };
+        setPendingBroadcast(payload, msg.from?.id);
         await bot.sendMessage(msg.chat.id, [
           '📣 Broadcast preview',
           '',
           payload.type === 'text' ? payload.text : `Turi: ${payload.type}\nCaption: ${payload.caption || 'yo‘q'}`,
           '',
-          `Qabul qiluvchilar: ${getAllBroadcastChatIds().length}`,
-          'Yuborish: /confirmbroadcast',
-          'Bekor qilish: /cancelbroadcast'
+          `Qabul qiluvchilar: ${getBroadcastTargetCount()}`
         ].join('\n'), {
-          message_thread_id: msg.message_thread_id
+          message_thread_id: msg.message_thread_id,
+          reply_markup: {
+            inline_keyboard: [[
+              { text: '✅ Yuborish', callback_data: 'ADMIN_CONFIRM_BROADCAST' },
+              { text: '❌ Bekor qilish', callback_data: 'ADMIN_CANCEL_BROADCAST' }
+            ]]
+          }
         });
         return;
       }
 
       if (text === '/confirmbroadcast') {
+        const pendingBroadcast = getPendingBroadcast();
         if (!pendingBroadcast) {
           await bot.sendMessage(msg.chat.id, 'Tasdiqlanadigan broadcast yo‘q.', {
             message_thread_id: msg.message_thread_id
@@ -275,7 +203,7 @@ async function handleMessage(bot, msg) {
           return;
         }
         const result = await sendBroadcastPayload(bot, pendingBroadcast.payload);
-        pendingBroadcast = null;
+        clearPendingBroadcast();
         await bot.sendMessage(msg.chat.id, [
           '✅ Broadcast yuborildi',
           `• Jami: ${result.total}`,
@@ -288,7 +216,7 @@ async function handleMessage(bot, msg) {
       }
 
       if (text === '/cancelbroadcast') {
-        pendingBroadcast = null;
+        clearPendingBroadcast();
         await bot.sendMessage(msg.chat.id, 'Broadcast bekor qilindi.', {
           message_thread_id: msg.message_thread_id
         });
@@ -303,6 +231,11 @@ async function handleMessage(bot, msg) {
       clearSession(msg.chat.id);
       await logStart(bot, msg);
       await showMenu(bot, msg.chat.id, 1);
+      if (adminUser) {
+        await bot.sendMessage(msg.chat.id, buildAdminPanelText(), {
+          reply_markup: buildAdminPanelMarkup()
+        });
+      }
       return;
     }
 
@@ -313,9 +246,11 @@ async function handleMessage(bot, msg) {
     }
 
     if (text === '/help') {
-      await bot.sendMessage(msg.chat.id, buildHelpText(adminUser), {
+      await bot.sendMessage(msg.chat.id, buildGeneralHelpText(adminUser), {
         reply_markup: {
-          inline_keyboard: [[{ text: 'Menyu 📚', callback_data: 'BACK_TO_MENU' }]]
+          inline_keyboard: adminUser
+            ? [[{ text: '🔐 Admin panel', callback_data: 'ADMIN_PANEL' }], [{ text: 'Menyu 📚', callback_data: 'BACK_TO_MENU' }]]
+            : [[{ text: 'Menyu 📚', callback_data: 'BACK_TO_MENU' }]]
         }
       });
       return;
