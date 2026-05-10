@@ -417,7 +417,18 @@ function recordQuizAttempt(user, summary) {
 function createDuelChallenge(user, test) {
   const store = readStore();
   const profile = getProfileFromStore(store, user);
-  const code = crypto.randomUUID().slice(0, 8).toUpperCase();
+  let code = '';
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const candidate = crypto.randomUUID().slice(0, 8).toUpperCase();
+    if (!store.duels[candidate]) {
+      code = candidate;
+      break;
+    }
+  }
+
+  if (!code) {
+    throw new Error('Duel kodini yaratib bo‘lmadi.');
+  }
 
   store.duels[code] = {
     code,
@@ -444,9 +455,18 @@ function attachDuelOpponent(code, user) {
   const store = readStore();
   const duel = store.duels[String(code || '').toUpperCase()];
   if (!duel) return null;
+  const userId = getUserId(user);
+  if (!userId) return null;
+
+  if (String(duel.creatorId) === String(userId)) {
+    return null;
+  }
+
   if (!duel.opponentId) {
-    duel.opponentId = getUserId(user);
+    duel.opponentId = userId;
     duel.status = 'active';
+  } else if (String(duel.opponentId) !== String(userId)) {
+    return null;
   }
   store.duels[duel.code] = duel;
   writeStore(store);

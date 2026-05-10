@@ -20,10 +20,12 @@ const state = {
   onboardingStep: 0,
   avatarCropSource: null,
   avatarCropScale: 1,
-  duelCodeInput: ''
+  duelCodeInput: '',
+  toast: null
 };
 
 let timerHandle = null;
+let toastTimer = null;
 
 function getTelegramUser() {
   const user = tg?.initDataUnsafe?.user;
@@ -78,6 +80,25 @@ function haptic(kind = 'selection') {
   } catch (_) {
     // no-op
   }
+}
+
+function showToast(message, tone = 'info') {
+  if (!message) return;
+  state.toast = {
+    message: String(message),
+    tone
+  };
+
+  if (toastTimer) {
+    clearTimeout(toastTimer);
+  }
+
+  toastTimer = window.setTimeout(() => {
+    state.toast = null;
+    render();
+  }, 2800);
+
+  render();
 }
 
 function initials(name = 'U') {
@@ -695,6 +716,15 @@ function renderTabs() {
   `;
 }
 
+function renderToast() {
+  if (!state.toast) return '';
+  return `
+    <div class="toast toast-${state.toast.tone}">
+      ${escapeHtml(state.toast.message)}
+    </div>
+  `;
+}
+
 function render() {
   if (!state.boot) {
     document.body.classList.remove('runner-mode');
@@ -714,7 +744,7 @@ function render() {
   if (state.currentQuiz) {
     document.body.classList.add('runner-mode');
     app.classList.add('runner-mode');
-    app.innerHTML = `${renderQuizSection()}`;
+    app.innerHTML = `${renderQuizSection()}${renderToast()}`;
     return;
   }
 
@@ -729,6 +759,7 @@ function render() {
     ${renderTabs()}
     ${renderOnboarding()}
     ${renderAvatarCropOverlay()}
+    ${renderToast()}
   `;
 }
 
@@ -817,6 +848,7 @@ async function createDuel() {
   state.tab = 'quiz';
   state.timerNow = Date.now();
   state.autoAdvanceLock = false;
+  state.boot.activeQuiz = null;
   startTimer();
   render();
 }
@@ -837,6 +869,7 @@ async function joinDuel() {
   state.tab = 'quiz';
   state.timerNow = Date.now();
   state.autoAdvanceLock = false;
+  state.boot.activeQuiz = null;
   startTimer();
   render();
 }
@@ -873,6 +906,7 @@ async function finishQuiz() {
     result: data
   };
   state.autoAdvanceLock = false;
+  showToast('Natija saqlandi', 'success');
   render();
 }
 
@@ -890,6 +924,7 @@ async function saveProfile() {
 
   state.boot.user = data;
   state.profileAvatarDraft = null;
+  showToast('Profil saqlandi', 'success');
   render();
 }
 
@@ -916,21 +951,27 @@ function scheduleAutoAdvance() {
   const isLastQuestion = state.currentQuiz.currentIndex + 1 === state.currentQuiz.questions.length;
 
   window.setTimeout(async () => {
-    if (!state.currentQuiz) {
+    try {
+      if (!state.currentQuiz) {
+        state.autoAdvanceLock = false;
+        return;
+      }
+
+      if (isLastQuestion) {
+        await finishQuiz();
+        haptic('success');
+        return;
+      }
+
+      state.currentQuiz.currentIndex += 1;
       state.autoAdvanceLock = false;
-      return;
+      await persistQuizProgress();
+      render();
+    } catch (error) {
+      state.autoAdvanceLock = false;
+      haptic('error');
+      showToast(error.message || 'Quiz davomida xato yuz berdi', 'error');
     }
-
-    if (isLastQuestion) {
-      await finishQuiz();
-      haptic('success');
-      return;
-    }
-
-    state.currentQuiz.currentIndex += 1;
-    state.autoAdvanceLock = false;
-    await persistQuizProgress();
-    render();
   }, 420);
 }
 
@@ -976,167 +1017,179 @@ document.addEventListener('click', async (event) => {
 
   const action = trigger.dataset.action;
 
-  if (action === 'toggle-theme') {
-    haptic('impact');
-    setTheme(state.theme === 'dark' ? 'light' : 'dark');
-    render();
-    return;
-  }
+  try {
+    if (action === 'toggle-theme') {
+      haptic('impact');
+      setTheme(state.theme === 'dark' ? 'light' : 'dark');
+      render();
+      return;
+    }
 
-  if (action === 'tab') {
-    if (state.currentQuiz && trigger.dataset.tab !== 'quiz') return;
-    haptic('selection');
-    state.tab = trigger.dataset.tab;
-    render();
-    return;
-  }
+    if (action === 'tab') {
+      if (state.currentQuiz && trigger.dataset.tab !== 'quiz') return;
+      haptic('selection');
+      state.tab = trigger.dataset.tab;
+      render();
+      return;
+    }
 
-  if (action === 'rating-mode') {
-    haptic('selection');
-    state.ratingMode = trigger.dataset.mode;
-    render();
-    return;
-  }
+    if (action === 'rating-mode') {
+      haptic('selection');
+      state.ratingMode = trigger.dataset.mode;
+      render();
+      return;
+    }
 
-  if (action === 'refresh') {
-    haptic('impact');
-    await refreshBoot();
-    return;
-  }
+    if (action === 'refresh') {
+      haptic('impact');
+      await refreshBoot();
+      showToast('Ro‘yxat yangilandi', 'success');
+      return;
+    }
 
-  if (action === 'start-quiz') {
-    haptic('impact');
-    await startQuiz(trigger.dataset.testId);
-    return;
-  }
+    if (action === 'start-quiz') {
+      haptic('impact');
+      await startQuiz(trigger.dataset.testId);
+      return;
+    }
 
-  if (action === 'start-daily-challenge') {
-    haptic('impact');
-    await startQuiz(trigger.dataset.testId, { isDailyChallenge: true });
-    return;
-  }
+    if (action === 'start-daily-challenge') {
+      haptic('impact');
+      await startQuiz(trigger.dataset.testId, { isDailyChallenge: true });
+      return;
+    }
 
-  if (action === 'start-weak-quiz') {
-    haptic('impact');
-    await startWeakQuiz();
-    return;
-  }
+    if (action === 'start-weak-quiz') {
+      haptic('impact');
+      await startWeakQuiz();
+      return;
+    }
 
-  if (action === 'resume-quiz') {
-    haptic('impact');
-    state.currentQuiz = state.boot.activeQuiz;
-    state.selectedAnswers = Array.isArray(state.currentQuiz.answers)
-      ? state.currentQuiz.answers
-      : new Array(state.currentQuiz.questions.length).fill(null);
-    state.timerNow = Date.now();
-    startTimer();
-    render();
-    return;
-  }
+    if (action === 'resume-quiz') {
+      haptic('impact');
+      state.currentQuiz = state.boot.activeQuiz;
+      state.selectedAnswers = Array.isArray(state.currentQuiz.answers)
+        ? state.currentQuiz.answers
+        : new Array(state.currentQuiz.questions.length).fill(null);
+      state.timerNow = Date.now();
+      startTimer();
+      render();
+      return;
+    }
 
-  if (action === 'create-duel') {
-    haptic('impact');
-    await createDuel();
-    return;
-  }
+    if (action === 'create-duel') {
+      haptic('impact');
+      await createDuel();
+      showToast('Duel yaratildi', 'success');
+      return;
+    }
 
-  if (action === 'join-duel') {
-    haptic('impact');
-    await joinDuel();
-    return;
-  }
+    if (action === 'join-duel') {
+      haptic('impact');
+      await joinDuel();
+      showToast('Duelga qo‘shildingiz', 'success');
+      return;
+    }
 
-  if (action === 'leave-quiz') {
-    await persistQuizProgress();
-    leaveQuiz();
-    return;
-  }
+    if (action === 'leave-quiz') {
+      await persistQuizProgress();
+      leaveQuiz();
+      return;
+    }
 
-  if (action === 'choose-answer') {
-    if (state.autoAdvanceLock) return;
-    haptic('selection');
-    state.selectedAnswers[state.currentQuiz.currentIndex] = Number(trigger.dataset.optionIndex);
-    await persistQuizProgress();
-    render();
-    scheduleAutoAdvance();
-    return;
-  }
+    if (action === 'choose-answer') {
+      if (state.autoAdvanceLock) return;
+      haptic('selection');
+      state.selectedAnswers[state.currentQuiz.currentIndex] = Number(trigger.dataset.optionIndex);
+      await persistQuizProgress();
+      render();
+      scheduleAutoAdvance();
+      return;
+    }
 
-  if (action === 'prev-question') {
-    state.currentQuiz.currentIndex = Math.max(0, state.currentQuiz.currentIndex - 1);
-    await persistQuizProgress();
-    render();
-    return;
-  }
+    if (action === 'prev-question') {
+      state.currentQuiz.currentIndex = Math.max(0, state.currentQuiz.currentIndex - 1);
+      await persistQuizProgress();
+      render();
+      return;
+    }
 
-  if (action === 'restart-test') {
-    haptic('impact');
-    await startQuiz(trigger.dataset.testId);
-    return;
-  }
+    if (action === 'restart-test') {
+      haptic('impact');
+      await startQuiz(trigger.dataset.testId);
+      return;
+    }
 
-  if (action === 'share-result') {
-    const result = state.currentQuiz?.result;
-    if (!result) return;
-    const text = `${result.testName}\n✅ ${result.correct}\n❌ ${result.wrong}\n📈 ${result.percent}%`;
-    if (navigator.share) {
-      try {
-        await navigator.share({ text });
-      } catch (_) {
-        // ignore
+    if (action === 'share-result') {
+      const result = state.currentQuiz?.result;
+      if (!result) return;
+      const text = `${result.testName}\n✅ ${result.correct}\n❌ ${result.wrong}\n📈 ${result.percent}%`;
+      if (navigator.share) {
+        try {
+          await navigator.share({ text });
+        } catch (_) {
+          // ignore
+        }
+      } else if (navigator.clipboard) {
+        await navigator.clipboard.writeText(text);
       }
-    } else if (navigator.clipboard) {
-      await navigator.clipboard.writeText(text);
+      showToast('Natija ulashishga tayyor', 'success');
+      return;
     }
-    return;
-  }
 
-  if (action === 'pick-avatar') {
-    document.getElementById('avatarFileInput')?.click();
-    return;
-  }
-
-  if (action === 'save-profile') {
-    await saveProfile();
-    return;
-  }
-
-  if (action === 'remove-avatar') {
-    state.profileAvatarDraft = '';
-    if (state.boot?.user) {
-      state.boot.user.avatarUrl = '';
+    if (action === 'pick-avatar') {
+      document.getElementById('avatarFileInput')?.click();
+      return;
     }
-    render();
-    return;
-  }
 
-  if (action === 'next-onboarding') {
-    state.onboardingStep += 1;
-    render();
-    return;
-  }
+    if (action === 'save-profile') {
+      await saveProfile();
+      return;
+    }
 
-  if (action === 'prev-onboarding') {
-    state.onboardingStep = Math.max(0, state.onboardingStep - 1);
-    render();
-    return;
-  }
+    if (action === 'remove-avatar') {
+      state.profileAvatarDraft = '';
+      if (state.boot?.user) {
+        state.boot.user.avatarUrl = '';
+      }
+      render();
+      return;
+    }
 
-  if (action === 'finish-onboarding') {
-    await markOnboardingComplete();
-    return;
-  }
+    if (action === 'next-onboarding') {
+      state.onboardingStep += 1;
+      render();
+      return;
+    }
 
-  if (action === 'cancel-crop') {
-    state.avatarCropSource = null;
-    state.avatarCropScale = 1;
-    render();
-    return;
-  }
+    if (action === 'prev-onboarding') {
+      state.onboardingStep = Math.max(0, state.onboardingStep - 1);
+      render();
+      return;
+    }
 
-  if (action === 'apply-crop') {
-    await applyAvatarCrop();
-    render();
+    if (action === 'finish-onboarding') {
+      await markOnboardingComplete();
+      showToast('Xush kelibsiz', 'success');
+      return;
+    }
+
+    if (action === 'cancel-crop') {
+      state.avatarCropSource = null;
+      state.avatarCropScale = 1;
+      render();
+      return;
+    }
+
+    if (action === 'apply-crop') {
+      await applyAvatarCrop();
+      render();
+      return;
+    }
+  } catch (error) {
+    console.error(error);
+    haptic('error');
+    showToast(error.message || 'Xatolik yuz berdi', 'error');
   }
 });
 

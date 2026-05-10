@@ -210,8 +210,17 @@ async function createMiniAppDuel(userPayload, testIndex) {
 
 async function joinMiniAppDuel(userPayload, duelCode) {
   const user = normalizeTelegramUser(userPayload);
+  const existing = getDuelByCode(duelCode);
+  if (!existing) throw new Error('Duel topilmadi.');
+  if (String(existing.creatorId) === String(user.id)) {
+    throw new Error('O‘zingiz yaratgan duelga ikkinchi o‘yinchi sifatida kira olmaysiz.');
+  }
+  if (existing.opponentId && String(existing.opponentId) !== String(user.id)) {
+    throw new Error('Bu duelga allaqachon boshqa foydalanuvchi qo‘shilgan.');
+  }
+
   const duel = attachDuelOpponent(duelCode, user);
-  if (!duel) throw new Error('Duel topilmadi.');
+  if (!duel) throw new Error('Duelga qo‘shilib bo‘lmadi.');
   if (!duel.testIndex) throw new Error('Duel buzilgan.');
 
   const quiz = await startMiniAppQuiz(user, duel.testIndex, { duelCode: duel.code });
