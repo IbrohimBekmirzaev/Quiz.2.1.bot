@@ -34,7 +34,6 @@ const state = {
   timerNow: Date.now(),
   autoAdvanceLock: false,
   profileAvatarDraft: null,
-  testSearch: '',
   onboardingStep: 0,
   avatarCropSource: null,
   avatarCropScale: 1,
@@ -168,13 +167,6 @@ function getNextTestId(currentTestIndex) {
   const currentIndex = tests.findIndex((test) => test.id === Number(currentTestIndex));
   if (currentIndex === -1) return null;
   return tests[currentIndex + 1]?.id || null;
-}
-
-function getFilteredTests() {
-  const tests = state.boot?.tests || [];
-  const query = state.testSearch.trim().toLowerCase();
-  if (!query) return tests;
-  return tests.filter((test) => String(test.name || '').toLowerCase().includes(query));
 }
 
 function getChallengeTimeLeft() {
@@ -317,7 +309,6 @@ function renderQuizList(tests) {
       </div>
       <button class="secondary-button" data-action="refresh">Darslarni yangilash</button>
     </div>
-    <input class="input" data-action="search-tests" placeholder="Test qidirish..." value="${escapeHtml(state.testSearch)}" />
     <div class="test-list">
       ${tests.map((test) => `
         <article class="quiz-card" data-action="start-quiz" data-test-id="${test.id}">
@@ -453,8 +444,8 @@ function renderActiveQuiz() {
 
 function renderQuizSection() {
   return `
-    <section class="section ${state.currentQuiz ? 'runner-shell' : ''} ${state.tab === 'quiz' ? '' : 'hidden'}" id="tab-quiz">
-      ${state.currentQuiz ? renderActiveQuiz() : renderQuizList(getFilteredTests())}
+      <section class="section ${state.currentQuiz ? 'runner-shell' : ''} ${state.tab === 'quiz' ? '' : 'hidden'}" id="tab-quiz">
+      ${state.currentQuiz ? renderActiveQuiz() : renderQuizList(state.boot?.tests || [])}
     </section>
   `;
 }
@@ -1240,12 +1231,6 @@ document.addEventListener('change', async (event) => {
 document.addEventListener('input', (event) => {
   const target = event.target;
   if (!(target instanceof HTMLInputElement)) return;
-
-  if (target.dataset.action === 'search-tests') {
-    state.testSearch = target.value;
-    render();
-    return;
-  }
 
   if (target.id === 'duelCodeInput') {
     state.duelCodeInput = target.value.toUpperCase();
