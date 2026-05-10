@@ -1,25 +1,91 @@
-# Qalb Ul Arabiyya Quiz boti
+# Qalb Ul Arabiyya Quiz
 
-Bu loyiha Node.js asosida yozilgan Telegram quiz bot.
+Node.js asosida yozilgan Telegram quiz bot va Telegram Mini App. Bot arabcha so‘zlarni test qiladi, Mini App esa testlar, reyting, profil, daily challenge va admin analytics uchun ishlatiladi.
 
-## Ichidagi asosiy imkoniyatlar
-- oddiy va tushunarli test bot
-- test savollari bitta xabarda almashadi
-- start, quiz, link, support, error topic loglari
-- user matn, rasm, video, audio, voice, document, sticker yuborsa admin topicga o'sha faylning o'zi boradi
-- admin topicda reply qilsa userga qaytadi
+## Asosiy Imkoniyatlar
+- Telegram bot ichida quiz testlar.
+- Telegram Mini App: testlar, reyting, profil, weak words, xato so‘zlarni qayta yechish.
+- Admin inline panel: `/admin`.
+- Support inbox: foydalanuvchi yuborgan matn, rasm, video, voice, document, sticker va boshqa xabarlar admin topicga boradi.
+- Admin reply: support logga reply qilsangiz foydalanuvchiga javob ketadi.
+- Broadcast: matn yoki media xabarni barcha foydalanuvchilarga yuborish.
+- Ikki log guruhga yuborish: primary va secondary log group.
+- Railway uchun `/health` endpoint va Mini App static hosting.
 
-## Ishga tushirish
+## Ishga Tushirish
 1. `npm install`
-2. `.env.example` dan `.env` nusxa oling
-3. `.env` ni to'ldiring
+2. `.env.example` faylidan `.env` yarating.
+3. `.env` ichidagi qiymatlarni to‘ldiring.
 4. `npm start`
 
-## Muhim
-Eski token ochilib qolgan bo'lsa, BotFather orqali yangi token oling.
+Development uchun:
 
-## Ikkinchi log guruhi
-Loglarni ikkinchi guruhga ham yuborish uchun `.env` ga quyidagilarni qo'shing:
+```bash
+npm run dev
+```
+
+Test uchun:
+
+```bash
+npm test
+```
+
+## Muhim Env Sozlamalari
+`.env` ichida hozirgi loyiha uchun asosiy qiymatlar:
+
+```env
+ADMIN_USER_IDS=7610350762,6899432112
+MINI_APP_URL=https://quiz21bot-production.up.railway.app/mini-app
+RAILWAY_PUBLIC_DOMAIN=quiz21bot-production.up.railway.app
+BOOKS_API_URL=https://bs.asmoarabic.com/api/getbooks
+API_URL=https://bs.asmoarabic.com/api/getAllLessonVocabularies
+QUESTIONS_PER_TEST=10
+TESTS_PER_PAGE=6
+BOT_NAME=Qalb Ul Arabiyya Quiz
+```
+
+`BOT_TOKEN` maxfiy. Uni GitHubga yuklamang. `.env` fayli `.gitignore` ichida turishi shart.
+
+## Admin Huquqlar
+To‘liq admin huquq berilgan user ID’lar:
+
+- `7610350762`
+- `6899432112`
+
+Bu ID’lar botda admin komandalarni ishlata oladi va Mini App ichida admin dashboard ko‘radi.
+
+## Bot Komandalari
+- `/start` - botni boshlash.
+- `/quiz` - quiz test menyusi.
+- `/app` - Mini Appni ochish.
+- `/profile` - foydalanuvchi profili.
+- `/top` - Top 10 reyting.
+- `/help` - yordam.
+- `/admin` - admin inline panel.
+
+## Admin Komandalari
+- `/admin` - inline admin panelni ochadi.
+- `/adminstats` - umumiy statistika va analytics.
+- `/pending` - javob kutilayotgan support xabarlar.
+- `/user ID` - bitta foydalanuvchi haqida ma’lumot.
+- `/broadcast matn` - barcha userlarga matn yuborish.
+- `/confirmbroadcast` - broadcastni tasdiqlash.
+- `/cancelbroadcast` - broadcastni bekor qilish.
+
+Media broadcast uchun rasm, video, voice, audio yoki document yuboring va caption boshiga `/broadcast` yozing.
+
+## Log Topiclar
+Primary log group:
+
+- `TOPIC_START_ID` - start va umumiy ishga tushish loglari.
+- `TOPIC_QUIZ_ID` - quiz boshlandi/yakunlandi loglari.
+- `TOPIC_LINK_ID` - Mini App va link hodisalari.
+- `TOPIC_SUPPORT_ID` - foydalanuvchi xabarlari va support.
+- `TOPIC_ERROR_ID` - xatoliklar.
+- `TOPIC_USERS_ID` - yangi foydalanuvchi statistikasi.
+
+Secondary log group uchun:
+
 - `SECOND_LOG_GROUP_ID`
 - `SECOND_TOPIC_START_ID`
 - `SECOND_TOPIC_QUIZ_ID`
@@ -28,27 +94,44 @@ Loglarni ikkinchi guruhga ham yuborish uchun `.env` ga quyidagilarni qo'shing:
 - `SECOND_TOPIC_ERROR_ID`
 - `SECOND_TOPIC_USERS_ID`
 
-Agar `SECOND_TOPIC_*` qiymatlari bo'sh qoldirilsa, bot primary topic ID larni ishlatadi.
+## Mini App
+Mini App manzili:
 
-## Users statistikasi
-Foydalanuvchi statistikasi uchun alohida topic ishlatish mumkin:
-- `TOPIC_USERS_ID`
-- `SECOND_TOPIC_USERS_ID`
+```text
+https://quiz21bot-production.up.railway.app/mini-app
+```
 
-Bot `/start` bosilganda users logga quyidagilarni yuboradi:
-- bugungi, haftalik, oylik, yillik foydalanuvchi soni
-- shu davrlardagi `/start` soni
-- oxirgi qo'shilgan foydalanuvchi
-- oxirgi faol foydalanuvchi
-- umumiy foydalanuvchilar va umumiy `/start` statistikasi
+Mini App ichida:
 
-## API lar
-Bot quyidagi API lardan foydalanadi:
-- `BOOKS_API_URL` - book va darslar tartibini olish uchun
-- `API_URL` - barcha lug'atlarni olish uchun
+- Testlar bot bilan bir xil bazadan olinadi.
+- Rating va profil bor.
+- Daily challenge bor.
+- Weak words va xato so‘zlarni qayta yechish bor.
+- Admin userlarda admin analytics ko‘rinadi.
+
+Telegram BotFather’da Menu Button yoki `/app` tugmasi shu URLga ulanishi kerak.
 
 ## Railway
-- `railway.json` qo'shilgan, `npm start` va `/health` endpoint avtomatik ishlaydi
-- Railway'da `Serverless/App Sleeping` o'chirilgan bo'lishi kerak
-- `BOT_TOKEN`, `ADMIN_GROUP_ID`, topic ID lar va boshqa `.env` qiymatlari Railway Variables ichiga kiritilishi kerak
-- Botni faqat bitta joyda ishga tushiring: lokal kompyuterda ham, Railway'da ham bir vaqtda ishlatmaslik kerak
+Railway’da Variables ichiga `.env` qiymatlarini kiriting. Ayniqsa:
+
+- `BOT_TOKEN`
+- `ADMIN_GROUP_ID`
+- `ADMIN_USER_IDS`
+- `MINI_APP_URL`
+- `RAILWAY_PUBLIC_DOMAIN`
+- topic ID’lar
+- API URL’lar
+
+Deploydan keyin tekshirish:
+
+```text
+https://quiz21bot-production.up.railway.app/health
+```
+
+Bot faqat bitta joyda ishlasin. Railway ishlab turganda lokal kompyuterda `npm start` qilsangiz `409 Conflict` chiqishi mumkin.
+
+## Xavfsizlik
+- `.env` faylini GitHubga yuklamang.
+- Token ochilib qolsa, BotFather orqali darhol yangi token oling.
+- Broadcast faqat admin ID’lar uchun ishlaydi.
+- Admin panel callbacklari ham faqat admin ID’larda ishlaydi.
