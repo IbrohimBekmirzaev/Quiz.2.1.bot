@@ -723,11 +723,19 @@ function renderTabs() {
   const tabs = ['quiz', 'rating', 'profile'];
   if (state.boot?.analytics) tabs.push('admin');
 
+  const labels = {
+    quiz: 'Quiz',
+    rating: 'Rating',
+    profile: 'Profile',
+    admin: 'Admin'
+  };
+
   return `
     <nav class="tabs">
       ${tabs.map((tab) => `
         <button class="tab-button ${state.tab === tab ? 'active' : ''} ${state.currentQuiz && tab !== 'quiz' ? 'disabled' : ''}" data-action="tab" data-tab="${tab}">
-          ${tab === 'quiz' ? 'Quiz' : tab === 'rating' ? 'Rating' : tab === 'profile' ? 'Profile' : 'Admin'}
+          <span class="tab-dot"></span>
+          <span class="tab-label">${labels[tab]}</span>
         </button>
       `).join('')}
     </nav>
