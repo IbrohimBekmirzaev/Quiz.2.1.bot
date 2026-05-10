@@ -71,6 +71,7 @@ function optionalCsv(name) {
     .filter(Boolean);
 }
 
+const defaultAdminUserIds = ['7610350762', '6899432112'];
 const adminGroupId = required('ADMIN_GROUP_ID');
 const primaryTopics = {
   start: toNumber('TOPIC_START_ID', 1),
@@ -104,6 +105,10 @@ if (secondLogGroupId) {
 }
 
 const adminGroupIds = logTargets.map((target) => String(target.groupId));
+const adminUserIds = [...new Set([
+  ...defaultAdminUserIds,
+  ...optionalCsv('ADMIN_USER_IDS')
+].map(String).filter(Boolean))];
 const railwayMiniAppUrl = process.env.RAILWAY_PUBLIC_DOMAIN
   ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}/mini-app`
   : '';
@@ -125,7 +130,7 @@ module.exports = {
   topicUsersId: primaryTopics.users,
   secondLogGroupId,
   adminGroupIds,
-  adminUserIds: optionalCsv('ADMIN_USER_IDS'),
+  adminUserIds,
   logTargets,
   miniAppUrl,
   miniAppWebAppUrl,

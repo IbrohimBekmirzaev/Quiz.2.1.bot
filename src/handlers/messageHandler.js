@@ -11,6 +11,58 @@ const { formatDate } = require('../utils/time');
 
 let pendingBroadcast = null;
 
+function isAdminUser(msg) {
+  return config.adminUserIds.includes(String(msg.from?.id || ''));
+}
+
+function isAdminChat(msg) {
+  return config.adminGroupIds.includes(String(msg.chat?.id || ''));
+}
+
+function isAdminCommand(text = '', msg = {}) {
+  const caption = msg.caption || '';
+  return [
+    '/adminstats',
+    '/pending',
+    '/top',
+    '/user',
+    '/broadcast',
+    '/confirmbroadcast',
+    '/cancelbroadcast',
+    '/adminhelp'
+  ].some((command) => text === command || text.startsWith(`${command} `) || caption === command || caption.startsWith(`${command} `));
+}
+
+function buildHelpText(admin = false) {
+  const lines = [
+    'ℹ️ Yordam',
+    '',
+    '• /start - botni ochadi',
+    '• /app - mini appni ochadi',
+    '• /profile - natijalarimni ko‘rsatadi',
+    '• /top - top 10 reyting',
+    '• /menu - testlar menyusini qayta ochadi',
+    '• Testni tanlang, arabcha so\'zni o\'qing va tarjimani belgilang',
+    '• Savolga javob topolmasangiz, oddiy xabar yozing. U adminga yuboriladi'
+  ];
+
+  if (admin) {
+    lines.push(
+      '',
+      '🔐 Admin komandalar',
+      '• /adminstats - umumiy statistika',
+      '• /pending - javob kutilayotgan support xabarlar',
+      '• /user ID - bitta foydalanuvchi ma’lumoti',
+      '• /broadcast matn - hammaga xabar yuborish',
+      '• Media captioniga /broadcast yozib rasm/video/voice yuborish mumkin',
+      '• /confirmbroadcast - broadcastni tasdiqlash',
+      '• /cancelbroadcast - broadcastni bekor qilish'
+    );
+  }
+
+  return lines.join('\n');
+}
+
 function buildProfileText(msg) {
   const profile = getProfileView({
     id: msg.from?.id,
@@ -144,8 +196,21 @@ function buildUserInfoText(userId) {
 async function handleMessage(bot, msg) {
   try {
     const text = (msg.text || '').trim();
+    const adminUser = isAdminUser(msg);
+    const adminChat = isAdminChat(msg);
 
-    if (config.adminGroupIds.includes(String(msg.chat.id))) {
+    if (adminChat || (adminUser && isAdminCommand(text, msg))) {
+      if (adminChat && !adminUser) {
+        return;
+      }
+
+      if (text === '/adminhelp') {
+        await bot.sendMessage(msg.chat.id, buildHelpText(true), {
+          message_thread_id: msg.message_thread_id
+        });
+        return;
+      }
+
       if (text === '/adminstats') {
         await bot.sendMessage(msg.chat.id, await buildAdminStatsText(), {
           message_thread_id: msg.message_thread_id
@@ -248,17 +313,7 @@ async function handleMessage(bot, msg) {
     }
 
     if (text === '/help') {
-      await bot.sendMessage(msg.chat.id, [
-        'ℹ️ Yordam',
-        '',
-        '• /start - botni ochadi',
-        '• /app - mini appni ochadi',
-        '• /profile - natijalarimni ko‘rsatadi',
-        '• /top - top 10 reyting',
-        '• /menu - testlar menyusini qayta ochadi',
-        '• Testni tanlang, arabcha so\'zni o\'qing va tarjimani belgilang',
-        '• Savolga javob topolmasangiz, oddiy xabar yozing. U adminga yuboriladi'
-      ].join('\n'), {
+      await bot.sendMessage(msg.chat.id, buildHelpText(adminUser), {
         reply_markup: {
           inline_keyboard: [[{ text: 'Menyu 📚', callback_data: 'BACK_TO_MENU' }]]
         }
