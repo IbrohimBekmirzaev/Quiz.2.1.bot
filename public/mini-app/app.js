@@ -4,6 +4,24 @@ if (tg) {
   tg.expand();
 }
 
+function syncTelegramViewport() {
+  const root = document.documentElement;
+  const viewportHeight = tg?.viewportHeight ? `${tg.viewportHeight}px` : '100dvh';
+  const stableHeight = tg?.viewportStableHeight ? `${tg.viewportStableHeight}px` : viewportHeight;
+  const safeBottom = tg?.safeAreaInset?.bottom ?? tg?.contentSafeAreaInset?.bottom ?? 0;
+  const safeTop = tg?.safeAreaInset?.top ?? tg?.contentSafeAreaInset?.top ?? 0;
+
+  root.style.setProperty('--app-height', viewportHeight);
+  root.style.setProperty('--app-stable-height', stableHeight);
+  root.style.setProperty('--safe-bottom', `${safeBottom}px`);
+  root.style.setProperty('--safe-top', `${safeTop}px`);
+}
+
+syncTelegramViewport();
+if (tg?.onEvent) {
+  tg.onEvent('viewportChanged', syncTelegramViewport);
+}
+
 const app = document.getElementById('app');
 const state = {
   theme: localStorage.getItem('miniapp-theme') || 'dark',
