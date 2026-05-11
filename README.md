@@ -55,15 +55,18 @@ To‘liq admin huquq berilgan user ID’lar:
 Bu ID’lar botda admin komandalarni ishlata oladi va Mini App ichida admin dashboard ko‘radi.
 
 ## Bot Komandalari
+Oddiy foydalanuvchilarda faqat quyidagi komandalar command menyuda ko‘rinadi:
+
 - `/start` - botni boshlash.
 - `/quiz` - quiz test menyusi.
 - `/app` - Mini Appni ochish.
 - `/profile` - foydalanuvchi profili.
 - `/top` - Top 10 reyting.
 - `/help` - yordam.
-- `/admin` - admin inline panel.
 
 ## Admin Komandalari
+Admin komandalar faqat `ADMIN_USER_IDS` ichidagi user ID’larda command menyuda ko‘rinadi.
+
 - `/admin` - inline admin panelni ochadi.
 - `/adminstats` - umumiy statistika va analytics.
 - `/pending` - javob kutilayotgan support xabarlar.

@@ -28,6 +28,24 @@ let healthServer = null;
 let lastPollingConflictAt = 0;
 let reminderTimer = null;
 const publicDir = path.join(__dirname, '..', 'public', 'mini-app');
+const defaultBotCommands = [
+  { command: 'start', description: 'Botni boshlash' },
+  { command: 'quiz', description: 'Quiz testni boshlash' },
+  { command: 'app', description: 'Mini Appni ochish' },
+  { command: 'profile', description: 'Profil va natijalar' },
+  { command: 'top', description: 'Top 10 reyting' },
+  { command: 'help', description: 'Yordam' }
+];
+const adminBotCommands = [
+  ...defaultBotCommands,
+  { command: 'admin', description: 'Admin panel' },
+  { command: 'adminstats', description: 'Admin statistika' },
+  { command: 'pending', description: 'Javob kutilayotgan xabarlar' },
+  { command: 'user', description: 'User ID bo‘yicha ma’lumot' },
+  { command: 'broadcast', description: 'Hammaga xabar yuborish' },
+  { command: 'confirmbroadcast', description: 'Broadcastni tasdiqlash' },
+  { command: 'cancelbroadcast', description: 'Broadcastni bekor qilish' }
+];
 
 function isPollingConflict(error) {
   const message = String(error?.message || '').toLowerCase();
@@ -91,15 +109,34 @@ async function warmupTests() {
 
 async function setupTelegramBotUi() {
   try {
-    await bot.setMyCommands([
-      { command: 'start', description: 'Botni boshlash' },
-      { command: 'quiz', description: 'Quiz testni boshlash' },
-      { command: 'app', description: 'Mini Appni ochish' },
-      { command: 'profile', description: 'Profil va natijalar' },
-      { command: 'top', description: 'Top 10 reyting' },
-      { command: 'admin', description: 'Admin panel' },
-      { command: 'help', description: 'Yordam' }
-    ]);
+    await bot.setMyCommands(defaultBotCommands);
+
+    for (const adminId of config.adminUserIds) {
+      try {
+        await bot.setMyCommands(adminBotCommands, {
+          scope: {
+            type: 'chat',
+            chat_id: Number(adminId)
+          }
+        });
+      } catch (error) {
+        console.warn(`Admin command scope o'rnatilmadi. User: ${adminId}. Xato: ${error.message}`);
+      }
+
+      for (const adminGroupId of config.adminGroupIds) {
+        try {
+          await bot.setMyCommands(adminBotCommands, {
+            scope: {
+              type: 'chat_member',
+              chat_id: adminGroupId,
+              user_id: Number(adminId)
+            }
+          });
+        } catch (error) {
+          console.warn(`Admin group command scope o'rnatilmadi. Group: ${adminGroupId}, User: ${adminId}. Xato: ${error.message}`);
+        }
+      }
+    }
 
     if (config.miniAppWebAppUrl) {
       await bot.setChatMenuButton({

@@ -48,6 +48,22 @@ function isAdminCommand(text = '', msg = {}) {
   ].some((command) => text === command || text.startsWith(`${command} `) || caption === command || caption.startsWith(`${command} `));
 }
 
+function isAdminOnlyCommand(text = '', msg = {}) {
+  const caption = msg.caption || '';
+  return [
+    '/adminstats',
+    '/pending',
+    '/user',
+    '/broadcast',
+    '/confirmbroadcast',
+    '/cancelbroadcast',
+    '/adminhelp',
+    '/admin',
+    '/adminpanel',
+    '/panel'
+  ].some((command) => text === command || text.startsWith(`${command} `) || caption === command || caption.startsWith(`${command} `));
+}
+
 function buildProfileText(msg) {
   const profile = getProfileView({
     id: msg.from?.id,
@@ -224,6 +240,11 @@ async function handleMessage(bot, msg) {
       }
 
       await handleAdminReply(bot, msg);
+      return;
+    }
+
+    if (!adminUser && isAdminOnlyCommand(text, msg)) {
+      await bot.sendMessage(msg.chat.id, 'Bu buyruq faqat admin uchun.');
       return;
     }
 
